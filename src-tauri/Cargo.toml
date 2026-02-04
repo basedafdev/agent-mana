@@ -1,0 +1,42 @@
+[package]
+name = "agent-mana"
+version = "0.1.0"
+description = "AI usage monitoring desktop app - track Anthropic and OpenAI API usage"
+authors = ["you"]
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+# The `_lib` suffix may seem redundant but it is necessary
+# to make the lib name unique and wouldn't conflict with the bin name.
+# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+name = "agent_mana_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-opener = "2"
+tauri-plugin-sql = { version = "2", features = ["sqlite"] }
+tauri-plugin-notification = "2"
+tauri-plugin-store = "2"
+tauri-plugin-shell = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+oauth2 = "4.4"
+keyring = { version = "3.6", features = ["apple-native", "linux-native", "windows-native"] }
+axum = "0.7"
+tower = "0.5"
+dirs = "5"
+rand = "0.8"
+sha2 = "0.10"
+base64 = "0.22"
+urlencoding = "2.1"
+open = "5"
+image = "0.25"
+
