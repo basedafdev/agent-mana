@@ -1,18 +1,13 @@
 import { useState, useEffect } from 'react';
-import { RefreshDouble, Settings, SunLight, HalfMoon } from 'iconoir-react';
+import { RefreshDouble, Settings } from 'iconoir-react';
 import { invoke } from '@tauri-apps/api/core';
-import { ThemeProvider, useTheme } from './contexts/ThemeContext';
+import { Store } from '@tauri-apps/plugin-store';
+import { ThemeProvider } from './contexts/ThemeContext';
 import CharacterCard, { CharacterStats } from './components/CharacterCard';
 import SettingsPanel from './components/SettingsPanel';
 import DowntimeAnalysis from './components/DowntimeAnalysis';
 import GlassCard from './components/GlassCard';
-
-interface ProviderConfig {
-  provider: 'anthropic' | 'openai' | 'google';
-  name: string;
-  apiKey: string;
-  connected: boolean;
-}
+import { ProviderConfig, ProviderId, AVAILABLE_PROVIDERS } from './types/providers';
 
 interface ClaudeUsageSnapshot {
   period_utilization: number;
@@ -21,24 +16,29 @@ interface ClaudeUsageSnapshot {
   weekly_resets_at: string | null;
 }
 
+interface CodexUsageSnapshot {
+  input_tokens: number;
+  output_tokens: number;
+  total_requests: number;
+  total_cost_usd: number;
+  period_days: number;
+}
+
 interface ProviderStatus {
   provider: string;
   connected: boolean;
   claude_usage: ClaudeUsageSnapshot | null;
+  codex_usage: CodexUsageSnapshot | null;
   error: string | null;
   last_updated: number;
 }
 
 function AppContent() {
-  const { theme, toggleTheme } = useTheme();
   const [showSettings, setShowSettings] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [lastRefreshTime, setLastRefreshTime] = useState<Date | null>(null);
   
-  const [providerConfigs, setProviderConfigs] = useState<ProviderConfig[]>([
-    { provider: 'anthropic', name: 'Claude', apiKey: '', connected: false },
-    { provider: 'openai', name: 'GPT', apiKey: '', connected: false },
-    { provider: 'google', name: 'Gemini', apiKey: '', connected: false },
-  ]);
+  const [providerConfigs, setProviderConfigs] = useState<ProviderConfig[]>([]);
 
   const [characterStats, setCharacterStats] = useState<CharacterStats[]>([
     {
@@ -51,10 +51,10 @@ function AppContent() {
     },
     {
       provider: 'openai',
-      name: 'GPT',
+      name: 'Codex',
       weeklyUtilization: 0,
       periodUtilization: 0,
-      periodName: '1HR',
+      periodName: '3HR',
       connected: false,
     },
     {
@@ -81,8 +81,8 @@ function AppContent() {
       const openaiStatus = await invoke<ProviderStatus>('get_provider_status', { provider: 'openai' });
       
       setProviderConfigs(prev => prev.map(p => {
-        if (p.provider === 'anthropic') return { ...p, connected: anthropicStatus.connected };
-        if (p.provider === 'openai') return { ...p, connected: openaiStatus.connected };
+        if (p.provider === 'anthropic') return { ...p, connected: anthropicStatus.connected, error: anthropicStatus.error };
+        if (p.provider === 'openai') return { ...p, connected: openaiStatus.connected, error: openaiStatus.error };
         return p;
       }));
 
@@ -102,6 +102,23 @@ function AppContent() {
           return { ...s, connected: anthropicStatus.connected };
         }
         if (s.provider === 'openai') {
+          if (openaiStatus.codex_usage) {
+            const usage = openaiStatus.codex_usage;
+            const totalTokens = usage.input_tokens + usage.output_tokens;
+            return {
+              ...s,
+              connected: openaiStatus.connected,
+              periodUtilization: 0,
+              weeklyUtilization: 0,
+              codexUsage: {
+                inputTokens: usage.input_tokens,
+                outputTokens: usage.output_tokens,
+                totalTokens,
+                totalCost: usage.total_cost_usd,
+                totalRequests: usage.total_requests,
+              },
+            };
+          }
           return { ...s, connected: openaiStatus.connected };
         }
         return s;
@@ -113,10 +130,18 @@ function AppContent() {
         const periodRemaining = 100 - usage.period_utilization;
         try {
           await invoke('update_tray_icon', { weeklyRemaining, periodRemaining });
+          await invoke('update_tray_menu', {
+            weeklyUtil: usage.weekly_utilization ?? 0,
+            periodUtil: usage.period_utilization,
+            weeklyReset: usage.weekly_resets_at,
+            periodReset: usage.period_resets_at,
+          });
         } catch (e) {
-          console.warn('Failed to update tray icon:', e);
+          console.warn('Failed to update tray:', e);
         }
       }
+      
+      setLastRefreshTime(new Date());
     } catch (error) {
       console.error('Failed to load provider status:', error);
     }
@@ -125,25 +150,21 @@ function AppContent() {
   const handleSaveKey = async (provider: string, apiKey: string): Promise<void> => {
     try {
       await invoke('save_api_key', { provider, apiKey });
+      await new Promise(r => setTimeout(r, 500));
+      await loadProviderStatus();
     } catch (error) {
       console.warn('Tauri invoke failed (expected in browser):', error);
+      throw error;
     }
-    
-    setProviderConfigs(prev => prev.map(p => 
-      p.provider === provider ? { ...p, apiKey, connected: true } : p
-    ));
-    setCharacterStats(prev => prev.map(s =>
-      s.provider === provider ? { ...s, connected: true } : s
-    ));
   };
 
   const handleRemoveKey = async (provider: string) => {
-    setProviderConfigs(prev => prev.map(p => 
-      p.provider === provider ? { ...p, apiKey: '', connected: false } : p
-    ));
-    setCharacterStats(prev => prev.map(s =>
-      s.provider === provider ? { ...s, connected: false } : s
-    ));
+    try {
+      await invoke('remove_api_key', { provider });
+      await loadProviderStatus();
+    } catch (error) {
+      console.error('Failed to remove key:', error);
+    }
   };
 
   const handleOAuthConnect = async (_provider: string) => {
@@ -166,37 +187,31 @@ function AppContent() {
   const disconnectedCharacters = characterStats.filter(c => !c.connected);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-zinc-950 via-black to-zinc-900 transition-colors duration-500 p-4">
-      <div className="fixed inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-white/5 via-transparent to-transparent pointer-events-none" />
+    <div className="min-h-screen bg-gradient-to-br from-zinc-100 via-zinc-50 to-white dark:from-zinc-950 dark:via-black dark:to-zinc-900 transition-colors duration-500 p-4">
+      <div className="fixed inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-zinc-300/30 dark:from-white/5 via-transparent to-transparent pointer-events-none" />
       <div className="relative max-w-md mx-auto space-y-4">
         
         <GlassCard className="p-4">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-black text-white tracking-tight">
+              <h1 className="text-2xl font-black text-[var(--text-primary)] tracking-tight">
                 Agent Mana
               </h1>
-              <p className="text-[10px] font-semibold text-white/30 tracking-widest uppercase">
+              <p className="text-[10px] font-semibold text-[var(--text-muted)] tracking-widest uppercase">
                 Party Status
               </p>
             </div>
             <div className="flex gap-1.5">
               <button
-                onClick={toggleTheme}
-                className="p-2 bg-white/[0.03] border border-white/[0.06] hover:bg-white/[0.08] rounded-lg transition-all text-white/50 hover:text-white"
-              >
-                {theme === 'dark' ? <SunLight className="w-4 h-4" /> : <HalfMoon className="w-4 h-4" />}
-              </button>
-              <button
                 onClick={handleRefresh}
                 disabled={refreshing}
-                className="p-2 bg-white/[0.03] border border-white/[0.06] hover:bg-white/[0.08] rounded-lg transition-all disabled:opacity-50 text-white/50 hover:text-white"
+                className="p-2 bg-[var(--bg-input)] border border-[var(--border-primary)] hover:bg-[var(--bg-card-hover)] rounded-lg transition-all disabled:opacity-50 text-[var(--text-muted)] hover:text-[var(--text-primary)]"
               >
                 <RefreshDouble className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
               </button>
               <button
                 onClick={() => setShowSettings(true)}
-                className="p-2 bg-white/[0.03] border border-white/[0.06] hover:bg-white/[0.08] rounded-lg transition-all text-white/50 hover:text-white"
+                className="p-2 bg-[var(--bg-input)] border border-[var(--border-primary)] hover:bg-[var(--bg-card-hover)] rounded-lg transition-all text-[var(--text-muted)] hover:text-[var(--text-primary)]"
               >
                 <Settings className="w-4 h-4" />
               </button>
@@ -213,7 +228,7 @@ function AppContent() {
         )}
 
         {disconnectedCharacters.length > 0 && connectedCharacters.length > 0 && (
-          <div className="text-[10px] font-semibold text-white/20 uppercase tracking-widest px-1">
+          <div className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-widest px-1">
             Inactive
           </div>
         )}
@@ -228,10 +243,10 @@ function AppContent() {
 
         {connectedCharacters.length === 0 && (
           <GlassCard className="p-8 text-center">
-            <div className="text-white/30 text-sm mb-2">No providers configured</div>
+            <div className="text-[var(--text-muted)] text-sm mb-2">No providers configured</div>
             <button
               onClick={() => setShowSettings(true)}
-              className="text-xs font-semibold text-white/50 hover:text-white underline underline-offset-2"
+              className="text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] underline underline-offset-2"
             >
               Open Settings to add API keys
             </button>
@@ -242,8 +257,10 @@ function AppContent() {
           <DowntimeAnalysis data={hourlyUsage} provider="anthropic" />
         )}
 
-        <div className="text-center text-[10px] font-mono text-white/20 pt-2">
-          {new Date().toLocaleTimeString()}
+        <div className="text-center text-[10px] font-mono text-[var(--text-muted)] pt-2">
+          {lastRefreshTime 
+            ? `Last refreshed at ${lastRefreshTime.toLocaleTimeString()}`
+            : 'Loading...'}
         </div>
       </div>
 

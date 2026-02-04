@@ -11,12 +11,12 @@ export default function GlassCard({ children, className = '', hover = false }: G
     <div
       className={`
         backdrop-blur-2xl
-        bg-white/[0.03]
-        border border-white/[0.08]
+        bg-[var(--bg-card)]
+        border border-[var(--border-primary)]
         rounded-2xl
-        shadow-2xl shadow-black/50
+        shadow-2xl shadow-[var(--shadow-color)]
         transition-all duration-300
-        ${hover ? 'hover:bg-white/[0.06] hover:border-white/[0.12] hover:-translate-y-0.5' : ''}
+        ${hover ? 'hover:bg-[var(--bg-card-hover)] hover:border-[var(--border-secondary)] hover:-translate-y-0.5' : ''}
         ${className}
       `}
     >

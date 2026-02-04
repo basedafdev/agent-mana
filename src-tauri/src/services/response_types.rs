@@ -7,6 +7,7 @@ pub struct ProviderStatus {
     pub connected: bool,
     pub usage: Option<UsageSnapshot>,
     pub claude_usage: Option<ClaudeUsageSnapshot>,
+    pub codex_usage: Option<CodexUsageSnapshot>,
     pub rate_limit: Option<RateLimitInfo>,
     pub error: Option<String>,
     pub last_updated: u64,
@@ -26,4 +27,13 @@ pub struct ClaudeUsageSnapshot {
     pub period_resets_at: Option<String>,
     pub weekly_utilization: Option<f64>,
     pub weekly_resets_at: Option<String>,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct CodexUsageSnapshot {
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub total_requests: u64,
+    pub total_cost_usd: f64,
+    pub period_days: u32,
 }

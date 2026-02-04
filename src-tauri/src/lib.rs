@@ -25,6 +25,7 @@ pub fn run() {
         connected: false,
         usage: None,
         claude_usage: None,
+        codex_usage: None,
         rate_limit: None,
         error: None,
         last_updated: 0,
@@ -35,6 +36,7 @@ pub fn run() {
         connected: false,
         usage: None,
         claude_usage: None,
+        codex_usage: None,
         rate_limit: None,
         error: None,
         last_updated: 0,
@@ -59,10 +61,12 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::get_provider_status,
             commands::save_api_key,
+            commands::remove_api_key,
             commands::save_threshold,
             commands::start_oauth_flow,
             commands::check_oauth_credentials,
             commands::update_tray_icon,
+            commands::update_tray_menu,
         ])
         .setup(move |app| {
             let icon_data = tray::generate_disconnected_icon();

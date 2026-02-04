@@ -1,8 +1,10 @@
-import { useState } from 'react';
-import { Xmark, Key, Eye, EyeClosed, FloppyDisk, Trash, Link as LinkIcon } from 'iconoir-react';
+import { useState, useEffect } from 'react';
+import { Xmark, Key, Eye, EyeClosed, FloppyDisk, Trash, Link as LinkIcon, Timer, Bell, HalfMoon } from 'iconoir-react';
 import { invoke } from '@tauri-apps/api/core';
+import { Store } from '@tauri-apps/plugin-store';
 import GlassCard from './GlassCard';
 import PixelCharacter from './PixelCharacter';
+import { useTheme } from '../contexts/ThemeContext';
 
 interface ProviderConfig {
   provider: 'anthropic' | 'openai' | 'google';
@@ -10,6 +12,7 @@ interface ProviderConfig {
   apiKey: string;
   connected: boolean;
   oauthConnected?: boolean;
+  error?: string | null;
 }
 
 interface SettingsPanelProps {
@@ -21,6 +24,7 @@ interface SettingsPanelProps {
 }
 
 export default function SettingsPanel({ providers, onSaveKey, onRemoveKey, onOAuthConnect, onClose }: SettingsPanelProps) {
+  const { preference, setPreference } = useTheme();
   const [editingProvider, setEditingProvider] = useState<string | null>(null);
   const [apiKeyInput, setApiKeyInput] = useState('');
   const [showKey, setShowKey] = useState(false);
@@ -28,12 +32,60 @@ export default function SettingsPanel({ providers, onSaveKey, onRemoveKey, onOAu
   const [oauthLoading, setOauthLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [pollingInterval, setPollingInterval] = useState(60);
+  const [periodThreshold, setPeriodThreshold] = useState(80);
+  const [weeklyThreshold, setWeeklyThreshold] = useState(90);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+
+  useEffect(() => {
+    const loadSettings = async () => {
+      try {
+        const store = await Store.load('settings.json');
+        const interval = await store.get<number>('pollingInterval');
+        const period = await store.get<number>('periodThreshold');
+        const weekly = await store.get<number>('weeklyThreshold');
+        const notifications = await store.get<boolean>('notificationsEnabled');
+
+        if (interval) setPollingInterval(interval);
+        if (period) setPeriodThreshold(period);
+        if (weekly) setWeeklyThreshold(weekly);
+        if (notifications !== null) setNotificationsEnabled(notifications ?? true);
+      } catch {
+      }
+    };
+    loadSettings();
+  }, []);
+
+  const saveSettings = async () => {
+    try {
+      const store = await Store.load('settings.json');
+      await store.set('pollingInterval', pollingInterval);
+      await store.set('periodThreshold', periodThreshold);
+      await store.set('weeklyThreshold', weeklyThreshold);
+      await store.set('notificationsEnabled', notificationsEnabled);
+      await store.save();
+
+      await invoke('save_threshold', {
+        threshold: {
+          provider: 'anthropic',
+          token_limit: null,
+          cost_limit: null,
+          rate_limit_percentage: null,
+          period_utilization_threshold: notificationsEnabled ? periodThreshold : null,
+          weekly_utilization_threshold: notificationsEnabled ? weeklyThreshold : null,
+          enabled: notificationsEnabled,
+        }
+      });
+    } catch {
+    }
+  };
+
   const handleSave = async (provider: string) => {
     if (!apiKeyInput.trim()) return;
-    
+
     setSaving(true);
     setError(null);
-    
+
     try {
       await onSaveKey(provider, apiKeyInput);
       await new Promise(r => setTimeout(r, 300));
@@ -65,84 +117,87 @@ export default function SettingsPanel({ providers, onSaveKey, onRemoveKey, onOAu
     }
   };
 
+  const selectClass = " rounded-lg px-2 py-1 text-xs cursor-pointer dark:bg-zinc-800 dark:text-black";
+
   return (
-    <div className="fixed inset-0 bg-black/95 backdrop-blur-xl flex items-center justify-center p-4 z-50">
-      <div className="backdrop-blur-2xl bg-zinc-900/95 border border-white/[0.08] rounded-3xl p-6 w-full max-w-md shadow-2xl max-h-[80vh] overflow-y-auto">
+    <div className="fixed inset-0 bg-white/90 dark:bg-black/95 backdrop-blur-xl flex items-center justify-center p-4 z-50">
+      <div className="backdrop-blur-2xl bg-white dark:bg-zinc-900/95 border border-zinc-200 dark:border-white/[0.08] rounded-3xl p-6 w-full max-w-md shadow-2xl max-h-[80vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-lg font-bold text-white">Settings</h2>
+          <h2 className="text-lg font-bold text-zinc-900 dark:text-white">Settings</h2>
           <button
             onClick={onClose}
-            className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+            className="p-2 hover:bg-zinc-100 dark:hover:bg-white/10 rounded-lg transition-colors"
           >
-            <Xmark className="w-5 h-5 text-white/60" />
+            <Xmark className="w-5 h-5 text-zinc-500 dark:text-white/60" />
           </button>
         </div>
 
         <div className="space-y-3">
-          <div className="text-xs font-semibold text-white/40 uppercase tracking-wider mb-3">
+          <div className="text-xs font-semibold text-zinc-500 dark:text-white/40 uppercase tracking-wider mb-3">
             Provider Configuration
           </div>
-          
+
           {providers.map((provider) => (
             <GlassCard key={provider.provider} className="p-4">
               <div className="flex items-center gap-3 mb-3">
-                <PixelCharacter provider={provider.provider} size={32} />
+                <PixelCharacter provider={provider.provider} size={32} isActive={provider.connected} />
                 <div className="flex-1">
-                  <div className="text-sm font-semibold text-white">{provider.name}</div>
-                  <div className={`text-[10px] ${provider.connected ? 'text-green-400' : 'text-white/40'}`}>
+                  <div className="text-sm font-semibold text-zinc-900 dark:text-white">{provider.name}</div>
+                  <div className={`text-[10px] ${provider.connected ? 'text-green-500' : 'text-zinc-400 dark:text-white/40'}`}>
                     {provider.connected ? '● Connected' : 'Not configured'}
                   </div>
                 </div>
-                <div className={`w-2 h-2 rounded-full ${provider.connected ? 'bg-green-400 shadow-[0_0_8px_rgba(74,222,128,0.6)]' : 'bg-white/20'}`} />
+                <div className={`w-2 h-2 rounded-full ${provider.connected ? 'bg-green-400 shadow-[0_0_8px_rgba(74,222,128,0.6)]' : 'bg-zinc-300 dark:bg-white/20'}`} />
               </div>
 
-              {editingProvider === provider.provider ? (
+              {editingProvider === provider.provider && provider.provider !== 'anthropic' ? (
                 <div className="space-y-3">
                   <div className="relative">
                     <input
                       type={showKey ? 'text' : 'password'}
                       value={apiKeyInput}
                       onChange={(e) => setApiKeyInput(e.target.value)}
-                      placeholder="Enter API key..."
-                      className="w-full bg-white/[0.03] border border-white/[0.08] rounded-lg px-3 py-2 pr-10 
-                               font-mono text-xs text-white placeholder-white/20
-                               focus:outline-none focus:border-white/20"
+                      placeholder={provider.provider === 'openai' ? 'sk-admin-...' : 'Enter API key...'}
+                      className="w-full bg-zinc-100 dark:bg-white/[0.03] border border-zinc-300 dark:border-white/[0.08] rounded-lg px-3 py-2 pr-10 
+                               font-mono text-xs text-zinc-900 dark:text-white placeholder-zinc-400 dark:placeholder-white/20
+                               focus:outline-none focus:border-zinc-400 dark:focus:border-white/20"
                       autoFocus
                     />
                     <button
                       onClick={() => setShowKey(!showKey)}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/60"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-400 dark:text-white/30 hover:text-zinc-600 dark:hover:text-white/60"
                     >
                       {showKey ? <EyeClosed className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
                   </div>
                   {error && (
-                    <div className="text-[10px] text-red-400 mb-2">{error}</div>
+                    <div className="text-[10px] text-red-500 mb-2">{error}</div>
                   )}
                   <div className="flex gap-2">
                     <button
                       onClick={() => handleSave(provider.provider)}
                       disabled={!apiKeyInput.trim() || saving}
-                      className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2
-                               bg-white text-black rounded-lg text-xs font-semibold
-                               disabled:bg-white/10 disabled:text-white/30 transition-all"
+                      className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all
+                               ${provider.provider === 'openai' 
+                                 ? 'bg-emerald-600 text-white hover:bg-emerald-500 disabled:bg-zinc-300 dark:disabled:bg-white/10 disabled:text-zinc-500 dark:disabled:text-white/30'
+                                 : 'bg-zinc-900 dark:bg-white text-white dark:text-black disabled:bg-zinc-300 dark:disabled:bg-white/10 disabled:text-zinc-500 dark:disabled:text-white/30'}`}
                     >
                       <FloppyDisk className="w-3.5 h-3.5" />
                       {saving ? 'Saving...' : 'Save'}
                     </button>
                     <button
-                      onClick={() => { setEditingProvider(null); setApiKeyInput(''); }}
-                      className="px-3 py-2 bg-white/[0.05] border border-white/[0.08] rounded-lg
-                               text-xs font-semibold text-white/60 hover:text-white transition-all"
+                      onClick={() => { setEditingProvider(null); setApiKeyInput(''); setError(null); }}
+                      className="px-3 py-2 bg-zinc-100 dark:bg-white/[0.05] border border-zinc-300 dark:border-white/[0.08] rounded-lg
+                               text-xs font-semibold text-zinc-600 dark:text-white/60 hover:text-zinc-900 dark:hover:text-white transition-all"
                     >
                       Cancel
                     </button>
                   </div>
                 </div>
               ) : provider.provider === 'anthropic' ? (
-                <div className="space-y-2">
+                <div className="space-y-3">
                   {error && (
-                    <div className="text-[10px] text-red-400">{error}</div>
+                    <div className="text-[10px] text-red-500">{error}</div>
                   )}
                   <div className="flex gap-2">
                     <button
@@ -151,7 +206,7 @@ export default function SettingsPanel({ providers, onSaveKey, onRemoveKey, onOAu
                       className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2
                                bg-gradient-to-r from-orange-500 to-amber-500 text-white rounded-lg text-xs font-semibold
                                hover:from-orange-400 hover:to-amber-400
-                               disabled:from-white/10 disabled:to-white/10 disabled:text-white/30 transition-all"
+                               disabled:from-zinc-300 disabled:to-zinc-300 dark:disabled:from-white/10 dark:disabled:to-white/10 disabled:text-zinc-500 dark:disabled:text-white/30 transition-all"
                     >
                       <LinkIcon className="w-3.5 h-3.5" />
                       {oauthLoading ? 'Connecting...' : provider.connected ? 'Connected' : 'Connect with Claude'}
@@ -159,16 +214,107 @@ export default function SettingsPanel({ providers, onSaveKey, onRemoveKey, onOAu
                     {provider.connected && (
                       <button
                         onClick={() => onRemoveKey(provider.provider)}
-                        className="p-2 bg-white/[0.05] border border-white/[0.08] rounded-lg
-                                 text-white/40 hover:text-white hover:bg-white/[0.1] transition-all"
+                        className="p-2 bg-zinc-100 dark:bg-white/[0.05] border border-zinc-300 dark:border-white/[0.08] rounded-lg
+                                 text-zinc-400 dark:text-white/40 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-200 dark:hover:bg-white/[0.1] transition-all"
                       >
                         <Trash className="w-4 h-4" />
                       </button>
                     )}
                   </div>
                   {!provider.connected && (
-                    <div className="text-[9px] text-white/30 text-center">
+                    <div className="text-[9px] text-zinc-400 dark:text-white/30 text-center">
                       Uses your Claude.ai account credentials
+                    </div>
+                  )}
+
+                  {provider.connected && (
+                    <div className="border-t border-zinc-200 dark:border-white/[0.05] pt-3 mt-3">
+                      <div className="flex items-center gap-2 mb-3">
+                        <Bell className="w-3.5 h-3.5 text-zinc-400 dark:text-white/40" />
+                        <span className="text-xs font-medium text-zinc-700 dark:text-white/70">Usage Alerts</span>
+                        <div className="flex-1" />
+                        <button
+                          onClick={() => {
+                            setNotificationsEnabled(!notificationsEnabled);
+                            setTimeout(saveSettings, 0);
+                          }}
+                          className={`w-9 h-5 rounded-full transition-colors ${notificationsEnabled ? 'bg-green-500' : 'bg-zinc-300 dark:bg-white/20'
+                            }`}
+                        >
+                          <div className={`w-4 h-4 rounded-full bg-white transition-transform mx-0.5 ${notificationsEnabled ? 'translate-x-4' : 'translate-x-0'
+                            }`} />
+                        </button>
+                      </div>
+
+                      {notificationsEnabled && (
+                        <div className="space-y-2.5">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[11px] text-zinc-500 dark:text-white/50">5-hour limit</span>
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="range"
+                                min="50"
+                                max="100"
+                                value={periodThreshold}
+                                onChange={(e) => {
+                                  setPeriodThreshold(Number(e.target.value));
+                                  saveSettings();
+                                }}
+                                className="w-16 h-1 bg-zinc-300 dark:bg-white/20 rounded-full appearance-none [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-blue-500"
+                              />
+                              <span className="text-[11px] text-zinc-700 dark:text-white/80 w-7">{periodThreshold}%</span>
+                            </div>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-[11px] text-zinc-500 dark:text-white/50">Weekly limit</span>
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="range"
+                                min="50"
+                                max="100"
+                                value={weeklyThreshold}
+                                onChange={(e) => {
+                                  setWeeklyThreshold(Number(e.target.value));
+                                  saveSettings();
+                                }}
+                                className="w-16 h-1 bg-zinc-300 dark:bg-white/20 rounded-full appearance-none [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-green-500"
+                              />
+                              <span className="text-[11px] text-zinc-700 dark:text-white/80 w-7">{weeklyThreshold}%</span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ) : provider.provider === 'openai' ? (
+                <div className="space-y-3">
+                  {(error || provider.error) && (
+                    <div className="text-[10px] text-red-500">{error || provider.error}</div>
+                  )}
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setEditingProvider('openai')}
+                      className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2
+                               bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-lg text-xs font-semibold
+                               hover:from-emerald-500 hover:to-teal-500 transition-all"
+                    >
+                      <Key className="w-3.5 h-3.5" />
+                      {provider.connected ? 'Update Admin Key' : 'Add Admin Key'}
+                    </button>
+                    {provider.connected && (
+                      <button
+                        onClick={() => onRemoveKey('openai')}
+                        className="p-2 bg-zinc-100 dark:bg-white/[0.05] border border-zinc-300 dark:border-white/[0.08] rounded-lg
+                                 text-zinc-400 dark:text-white/40 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-200 dark:hover:bg-white/[0.1] transition-all"
+                      >
+                        <Trash className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                  {!provider.connected && (
+                    <div className="text-[9px] text-zinc-400 dark:text-white/30 text-center">
+                      Requires Admin API key from platform.openai.com/settings
                     </div>
                   )}
                 </div>
@@ -177,8 +323,8 @@ export default function SettingsPanel({ providers, onSaveKey, onRemoveKey, onOAu
                   <button
                     onClick={() => setEditingProvider(provider.provider)}
                     className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2
-                             bg-white/[0.05] border border-white/[0.08] rounded-lg
-                             text-xs font-semibold text-white/60 hover:text-white hover:bg-white/[0.1] transition-all"
+                             bg-zinc-100 dark:bg-white/[0.05] border border-zinc-300 dark:border-white/[0.08] rounded-lg
+                             text-xs font-semibold text-zinc-600 dark:text-white/60 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-200 dark:hover:bg-white/[0.1] transition-all"
                   >
                     <Key className="w-3.5 h-3.5" />
                     {provider.connected ? 'Update Key' : 'Add Key'}
@@ -186,8 +332,8 @@ export default function SettingsPanel({ providers, onSaveKey, onRemoveKey, onOAu
                   {provider.connected && (
                     <button
                       onClick={() => onRemoveKey(provider.provider)}
-                      className="p-2 bg-white/[0.05] border border-white/[0.08] rounded-lg
-                               text-white/40 hover:text-white hover:bg-white/[0.1] transition-all"
+                      className="p-2 bg-zinc-100 dark:bg-white/[0.05] border border-zinc-300 dark:border-white/[0.08] rounded-lg
+                               text-zinc-400 dark:text-white/40 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-200 dark:hover:bg-white/[0.1] transition-all"
                     >
                       <Trash className="w-4 h-4" />
                     </button>
@@ -198,8 +344,54 @@ export default function SettingsPanel({ providers, onSaveKey, onRemoveKey, onOAu
           ))}
         </div>
 
-        <div className="mt-6 pt-4 border-t border-white/[0.05]">
-          <div className="text-[10px] text-white/30 text-center">
+        <div className="mt-6 space-y-3">
+          <div className="text-xs font-semibold text-zinc-500 dark:text-white/40 uppercase tracking-wider mb-3">
+            Preferences
+          </div>
+
+          <GlassCard className="p-4 space-y-4">
+            <div className="flex items-center gap-3">
+              <HalfMoon className="w-4 h-4 text-zinc-400 dark:text-white/40" />
+              <div className="flex-1">
+                <div className="text-sm font-medium text-zinc-900 dark:text-white">Appearance</div>
+                <div className="text-[10px] text-zinc-500 dark:text-white/40">Light, dark, or sync with system</div>
+              </div>
+              <select
+                value={preference}
+                onChange={(e) => setPreference(e.target.value as 'system' | 'light' | 'dark')}
+                className={selectClass}
+              >
+                <option value="system">System</option>
+                <option value="light">Light</option>
+                <option value="dark">Dark</option>
+              </select>
+            </div>
+
+            <div className="border-t border-zinc-200 dark:border-white/[0.05] pt-4 flex items-center gap-3">
+              <Timer className="w-4 h-4 text-zinc-400 dark:text-white/40" />
+              <div className="flex-1">
+                <div className="text-sm font-medium text-zinc-900 dark:text-white">Refresh Interval</div>
+                <div className="text-[10px] text-zinc-500 dark:text-white/40">How often to check usage</div>
+              </div>
+              <select
+                value={pollingInterval}
+                onChange={(e) => {
+                  setPollingInterval(Number(e.target.value));
+                  saveSettings();
+                }}
+                className={selectClass}
+              >
+                <option value={30}>30s</option>
+                <option value={60}>1 min</option>
+                <option value={120}>2 min</option>
+                <option value={300}>5 min</option>
+              </select>
+            </div>
+          </GlassCard>
+        </div>
+
+        <div className="mt-6 pt-4 border-t border-zinc-200 dark:border-white/[0.05]">
+          <div className="text-[10px] text-zinc-400 dark:text-white/30 text-center">
             API keys are stored securely in your system keychain
           </div>
         </div>

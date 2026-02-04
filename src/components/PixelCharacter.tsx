@@ -1,5 +1,7 @@
+import { ProviderId } from '../types/providers';
+
 interface PixelCharacterProps {
-  provider: 'anthropic' | 'openai' | 'google';
+  provider: ProviderId;
   size?: number;
   isLow?: boolean;
   isActive?: boolean;
@@ -9,7 +11,7 @@ const COLORS = {
   anthropic: { primary: '#D97757', secondary: '#E8956A', highlight: '#F4B896' },
   openai: { primary: '#10A37F', secondary: '#1DBF8E', highlight: '#6EE7B7' },
   google: { primary: '#4285F4', secondary: '#669DF6', highlight: '#A8C7FA' },
-  inactive: { primary: 'white', secondary: 'white', highlight: 'white' },
+  inactive: { primary: '#9CA3AF', secondary: '#D1D5DB', highlight: '#E5E7EB' },
 };
 
 export default function PixelCharacter({ provider, size = 64, isLow = false, isActive = false }: PixelCharacterProps) {

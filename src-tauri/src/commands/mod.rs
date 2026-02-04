@@ -34,6 +34,75 @@ pub async fn save_api_key(
     state.keychain
         .store_api_key(&provider, &api_key)
         .map_err(|e| e.to_string())?;
+    
+    if provider == "openai" {
+        use crate::api::openai::OpenAIClient;
+        use crate::services::CodexUsageSnapshot;
+        
+        let client = OpenAIClient::new(api_key);
+        
+        match client.validate_key().await {
+            Ok(true) => {
+                match client.get_organization_usage(30).await {
+                    Ok(usage) => {
+                        let mut status = state.openai_status.write().await;
+                        status.connected = true;
+                        status.error = None;
+                        status.codex_usage = Some(CodexUsageSnapshot {
+                            input_tokens: usage.input_tokens,
+                            output_tokens: usage.output_tokens,
+                            total_requests: usage.total_requests,
+                            total_cost_usd: usage.total_cost_usd,
+                            period_days: 30,
+                        });
+                        status.last_updated = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap()
+                            .as_secs();
+                    }
+                    Err(e) => {
+                        let mut status = state.openai_status.write().await;
+                        status.connected = true;
+                        status.error = Some(format!("Usage fetch error: {}", e));
+                        status.last_updated = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap()
+                            .as_secs();
+                    }
+                }
+            }
+            Ok(false) => {
+                let mut status = state.openai_status.write().await;
+                status.connected = false;
+                status.error = Some("Invalid API key".to_string());
+            }
+            Err(e) => {
+                let mut status = state.openai_status.write().await;
+                status.connected = false;
+                status.error = Some(format!("Error: {}", e));
+            }
+        }
+    }
+    
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn remove_api_key(
+    provider: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    state.keychain
+        .delete_api_key(&provider)
+        .map_err(|e| e.to_string())?;
+    
+    if provider == "openai" {
+        let mut status = state.openai_status.write().await;
+        status.connected = false;
+        status.codex_usage = None;
+        status.error = None;
+    }
+    
     Ok(())
 }
 
@@ -169,6 +238,84 @@ pub async fn update_tray_icon(
     
     if let Some(tray) = app.tray_by_id("main") {
         tray.set_icon(Some(icon)).map_err(|e| e.to_string())?;
+    }
+    
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn update_tray_menu(
+    app: tauri::AppHandle,
+    weekly_util: f64,
+    period_util: f64,
+    weekly_reset: Option<String>,
+    period_reset: Option<String>,
+) -> Result<(), String> {
+    use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
+    
+    let weekly_remaining = 100.0 - weekly_util;
+    let period_remaining = 100.0 - period_util;
+    
+    let weekly_text = format!("Weekly: {:.0}% remaining", weekly_remaining);
+    let period_text = format!("5-Hour: {:.0}% remaining", period_remaining);
+    
+    let weekly_reset_text = weekly_reset
+        .and_then(|s| chrono::DateTime::parse_from_rfc3339(&s).ok())
+        .map(|dt| {
+            let now = chrono::Utc::now();
+            let diff = dt.signed_duration_since(now);
+            let days = diff.num_days();
+            let hours = diff.num_hours() % 24;
+            if days > 0 {
+                format!("Resets in {}d {}h", days, hours)
+            } else {
+                format!("Resets in {}h", hours)
+            }
+        })
+        .unwrap_or_default();
+    
+    let period_reset_text = period_reset
+        .and_then(|s| chrono::DateTime::parse_from_rfc3339(&s).ok())
+        .map(|dt| {
+            let now = chrono::Utc::now();
+            let diff = dt.signed_duration_since(now);
+            let hours = diff.num_hours();
+            let mins = diff.num_minutes() % 60;
+            if hours > 0 {
+                format!("Resets in {}h {}m", hours, mins)
+            } else {
+                format!("Resets in {}m", mins)
+            }
+        })
+        .unwrap_or_default();
+    
+    let title_item = MenuItem::with_id(&app, "title", "━━ Claude Usage ━━", false, None::<&str>)
+        .map_err(|e| e.to_string())?;
+    let weekly_item = MenuItem::with_id(&app, "weekly", &weekly_text, false, None::<&str>)
+        .map_err(|e| e.to_string())?;
+    let weekly_reset_item = MenuItem::with_id(&app, "weekly_reset", &format!("    {}", weekly_reset_text), false, None::<&str>)
+        .map_err(|e| e.to_string())?;
+    let period_item = MenuItem::with_id(&app, "period", &period_text, false, None::<&str>)
+        .map_err(|e| e.to_string())?;
+    let period_reset_item = MenuItem::with_id(&app, "period_reset", &format!("    {}", period_reset_text), false, None::<&str>)
+        .map_err(|e| e.to_string())?;
+    let separator = PredefinedMenuItem::separator(&app)
+        .map_err(|e| e.to_string())?;
+    let quit_item = MenuItem::with_id(&app, "quit", "Quit Agent Mana", true, None::<&str>)
+        .map_err(|e| e.to_string())?;
+    
+    let menu = Menu::with_items(&app, &[
+        &title_item,
+        &weekly_item,
+        &weekly_reset_item,
+        &period_item,
+        &period_reset_item,
+        &separator,
+        &quit_item,
+    ]).map_err(|e| e.to_string())?;
+    
+    if let Some(tray) = app.tray_by_id("main") {
+        tray.set_menu(Some(menu)).map_err(|e| e.to_string())?;
     }
     
     Ok(())

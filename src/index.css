@@ -1,3 +1,51 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  :root {
+    --bg-primary: #f4f4f5;
+    --bg-secondary: #ffffff;
+    --bg-card: #ffffff;
+    --bg-card-hover: #fafafa;
+    --bg-input: #f4f4f5;
+    --bg-overlay: rgba(255, 255, 255, 0.95);
+    
+    --border-primary: #e4e4e7;
+    --border-secondary: #d4d4d8;
+    
+    --text-primary: #18181b;
+    --text-secondary: #52525b;
+    --text-muted: #a1a1aa;
+    
+    --shadow-color: rgba(0, 0, 0, 0.1);
+  }
+
+  .dark {
+    --bg-primary: #09090b;
+    --bg-secondary: #000000;
+    --bg-card: rgba(255, 255, 255, 0.03);
+    --bg-card-hover: rgba(255, 255, 255, 0.06);
+    --bg-input: rgba(255, 255, 255, 0.05);
+    --bg-overlay: rgba(0, 0, 0, 0.95);
+    
+    --border-primary: rgba(255, 255, 255, 0.08);
+    --border-secondary: rgba(255, 255, 255, 0.12);
+    
+    --text-primary: #ffffff;
+    --text-secondary: rgba(255, 255, 255, 0.7);
+    --text-muted: rgba(255, 255, 255, 0.4);
+    
+    --shadow-color: rgba(0, 0, 0, 0.5);
+  }
+}
+
+select option {
+  background-color: #27272a;
+  color: white;
+}
+
+.light select option {
+  background-color: #27272a;
+  color: white;
+}

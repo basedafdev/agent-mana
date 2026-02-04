@@ -7,6 +7,11 @@ const OUTER_RADIUS: f64 = 10.0;
 const INNER_RADIUS: f64 = 6.5;
 const RING_WIDTH: f64 = 2.5;
 
+const CLAUDE_CORAL: [u8; 4] = [217, 119, 87, 255];
+const CLAUDE_CORAL_DARK: [u8; 4] = [180, 90, 60, 255];
+const CODEX_GREEN: [u8; 4] = [16, 185, 129, 255];
+const CODEX_GREEN_DARK: [u8; 4] = [5, 150, 105, 255];
+
 fn lerp_color(from: [u8; 4], to: [u8; 4], t: f64) -> [u8; 4] {
     [
         (from[0] as f64 + (to[0] as f64 - from[0] as f64) * t) as u8,
@@ -88,38 +93,92 @@ fn draw_arc(
     }
 }
 
-fn draw_character(img: &mut RgbaImage, color: [u8; 4]) {
-    let pixels = [
+fn draw_claude_bot(img: &mut RgbaImage, primary: [u8; 4], accent: [u8; 4]) {
+    let head_pixels: [(u32, u32); 24] = [
+        (9, 7),
         (10, 7),
         (11, 7),
+        (12, 7),
+        (8, 8),
         (9, 8),
         (10, 8),
         (11, 8),
         (12, 8),
+        (13, 8),
+        (8, 9),
         (9, 9),
+        (10, 9),
+        (11, 9),
         (12, 9),
+        (13, 9),
+        (8, 10),
         (9, 10),
         (10, 10),
         (11, 10),
         (12, 10),
-        (10, 11),
-        (11, 11),
+        (13, 10),
+        (9, 11),
+        (12, 11),
+    ];
+
+    for (x, y) in head_pixels {
+        if x < ICON_SIZE && y < ICON_SIZE {
+            img.put_pixel(x, y, Rgba(primary));
+        }
+    }
+
+    let visor_color = [30, 30, 30, 255];
+    for x in 9..=12 {
+        img.put_pixel(x, 9, Rgba(visor_color));
+    }
+
+    let shine = [255, 255, 255, 180];
+    img.put_pixel(9, 9, Rgba(shine));
+    img.put_pixel(12, 9, Rgba(shine));
+
+    img.put_pixel(11, 6, Rgba(accent));
+    img.put_pixel(11, 5, Rgba(primary));
+
+    let body_pixels: [(u32, u32); 8] = [
         (9, 12),
         (10, 12),
         (11, 12),
         (12, 12),
         (9, 13),
+        (10, 13),
+        (11, 13),
         (12, 13),
     ];
 
-    for (x, y) in pixels {
+    for (x, y) in body_pixels {
         if x < ICON_SIZE && y < ICON_SIZE {
-            img.put_pixel(x, y, Rgba(color));
+            img.put_pixel(x, y, Rgba(accent));
         }
     }
 }
 
+fn draw_codex_indicator(img: &mut RgbaImage) {
+    let indicator_pixels: [(u32, u32); 4] = [(18, 18), (19, 18), (18, 19), (19, 19)];
+
+    for (x, y) in indicator_pixels {
+        if x < ICON_SIZE && y < ICON_SIZE {
+            img.put_pixel(x, y, Rgba(CODEX_GREEN));
+        }
+    }
+
+    img.put_pixel(19, 17, Rgba(CODEX_GREEN_DARK));
+    img.put_pixel(20, 18, Rgba(CODEX_GREEN_DARK));
+}
+
 pub fn generate_tray_icon(weekly_remaining: f64, period_remaining: f64) -> Vec<u8> {
+    generate_tray_icon_with_codex(weekly_remaining, period_remaining, false)
+}
+
+pub fn generate_tray_icon_with_codex(
+    weekly_remaining: f64,
+    period_remaining: f64,
+    codex_connected: bool,
+) -> Vec<u8> {
     let mut img = RgbaImage::new(ICON_SIZE, ICON_SIZE);
 
     for pixel in img.pixels_mut() {
@@ -148,8 +207,11 @@ pub fn generate_tray_icon(weekly_remaining: f64, period_remaining: f64) -> Vec<u
         mp_color,
     );
 
-    let char_color = [220, 220, 220, 255];
-    draw_character(&mut img, char_color);
+    draw_claude_bot(&mut img, CLAUDE_CORAL, CLAUDE_CORAL_DARK);
+
+    if codex_connected {
+        draw_codex_indicator(&mut img);
+    }
 
     img.into_raw()
 }
@@ -181,8 +243,40 @@ pub fn generate_disconnected_icon() -> Vec<u8> {
         gray,
     );
 
-    let char_color = [120, 120, 120, 255];
-    draw_character(&mut img, char_color);
+    let gray_primary = [120, 120, 120, 255];
+    let gray_accent = [80, 80, 80, 255];
+    draw_claude_bot(&mut img, gray_primary, gray_accent);
+
+    img.into_raw()
+}
+
+pub fn generate_codex_only_icon() -> Vec<u8> {
+    let mut img = RgbaImage::new(ICON_SIZE, ICON_SIZE);
+
+    for pixel in img.pixels_mut() {
+        *pixel = Rgba([0, 0, 0, 0]);
+    }
+
+    draw_arc(
+        &mut img,
+        CENTER,
+        CENTER,
+        OUTER_RADIUS,
+        RING_WIDTH,
+        100.0,
+        CODEX_GREEN,
+    );
+    draw_arc(
+        &mut img,
+        CENTER,
+        CENTER,
+        INNER_RADIUS,
+        RING_WIDTH,
+        100.0,
+        CODEX_GREEN_DARK,
+    );
+
+    draw_claude_bot(&mut img, CODEX_GREEN, CODEX_GREEN_DARK);
 
     img.into_raw()
 }

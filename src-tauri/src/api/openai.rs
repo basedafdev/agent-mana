@@ -5,6 +5,9 @@ use std::fmt;
 /// Base URL for OpenAI API
 const API_BASE_URL: &str = "https://api.openai.com/v1";
 
+/// Usage API base URL (requires Admin Key)
+const USAGE_API_URL: &str = "https://api.openai.com/v1/organization/usage";
+
 /// Custom error type for OpenAI API operations
 #[derive(Debug)]
 pub enum OpenAIError {
@@ -184,6 +187,64 @@ pub struct DailyCost {
     pub cost: f64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OrganizationUsage {
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub total_requests: u64,
+    pub total_cost_usd: f64,
+    pub period_start: u64,
+    pub period_end: u64,
+}
+
+#[derive(Debug, Deserialize)]
+struct UsagePageResponse {
+    data: Vec<UsageBucket>,
+    has_more: bool,
+    #[allow(dead_code)]
+    next_page: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct UsageBucket {
+    #[allow(dead_code)]
+    start_time: u64,
+    #[allow(dead_code)]
+    end_time: u64,
+    results: Vec<UsageResult>,
+}
+
+#[derive(Debug, Deserialize)]
+struct UsageResult {
+    input_tokens: Option<u64>,
+    output_tokens: Option<u64>,
+    num_model_requests: Option<u64>,
+    #[allow(dead_code)]
+    model: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CostsPageResponse {
+    data: Vec<CostsBucket>,
+    #[allow(dead_code)]
+    has_more: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct CostsBucket {
+    results: Vec<CostResult>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CostResult {
+    amount: Option<CostAmount>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CostAmount {
+    value: Option<f64>,
+}
+
 /// Response from the /models endpoint
 #[derive(Debug, Deserialize)]
 struct ModelsResponse {
@@ -346,37 +407,113 @@ impl OpenAIClient {
         }
     }
 
-    /// Get current usage/billing information
-    ///
-    /// Note: OpenAI's usage endpoints require proper authentication and
-    /// may have restrictions based on account type. This method attempts
-    /// to fetch billing information but may return limited data or errors
-    /// depending on API access level.
-    ///
-    /// As of 2024, OpenAI has deprecated direct billing API access for
-    /// most accounts. This method returns a placeholder structure.
-    ///
-    /// # Example
-    /// ```no_run
-    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-    /// # let client = OpenAIClient::new("sk-...".to_string());
-    /// match client.get_usage().await {
-    ///     Ok(billing) => println!("Usage data: {:?}", billing),
-    ///     Err(e) => eprintln!("Could not fetch usage: {}", e),
-    /// }
-    /// # Ok(())
-    /// # }
-    /// ```
-    pub async fn get_usage(&self) -> Result<BillingInfo> {
-        // Note: OpenAI has deprecated or restricted billing API access
-        // This is a placeholder for future implementation if the API becomes available
-        // or for accounts with appropriate access levels
+    pub async fn get_organization_usage(&self, days: u32) -> Result<OrganizationUsage> {
+        let headers = self.build_headers()?;
         
-        // For now, return empty billing info to indicate the feature is not fully available
-        Ok(BillingInfo {
-            total_usage: None,
-            daily_costs: None,
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let start_time = now - (days as u64 * 24 * 60 * 60);
+        
+        let completions_url = format!(
+            "{}/completions?start_time={}&bucket_width=1d",
+            USAGE_API_URL, start_time
+        );
+        
+        let response = self.client
+            .get(&completions_url)
+            .headers(headers.clone())
+            .send()
+            .await?;
+        
+        let status = response.status();
+        if status.as_u16() == 401 {
+            return Err(OpenAIError::AuthenticationFailed);
+        }
+        if status.as_u16() == 403 {
+            return Err(OpenAIError::ApiError {
+                status: 403,
+                message: "Admin API key required for usage data".to_string(),
+            });
+        }
+        if !status.is_success() {
+            let error_body = response.text().await.unwrap_or_default();
+            return Err(OpenAIError::ApiError {
+                status: status.as_u16(),
+                message: error_body,
+            });
+        }
+        
+        let usage_response: UsagePageResponse = response.json().await.map_err(|e| {
+            OpenAIError::ParseError(format!("Failed to parse usage response: {}", e))
+        })?;
+        
+        let mut total_input = 0u64;
+        let mut total_output = 0u64;
+        let mut total_requests = 0u64;
+        
+        for bucket in &usage_response.data {
+            for result in &bucket.results {
+                total_input += result.input_tokens.unwrap_or(0);
+                total_output += result.output_tokens.unwrap_or(0);
+                total_requests += result.num_model_requests.unwrap_or(0);
+            }
+        }
+        
+        let costs_url = format!(
+            "{}/costs?start_time={}&bucket_width=1d",
+            USAGE_API_URL, start_time
+        );
+        
+        let costs_response = self.client
+            .get(&costs_url)
+            .headers(headers)
+            .send()
+            .await?;
+        
+        let mut total_cost = 0.0f64;
+        
+        if costs_response.status().is_success() {
+            if let Ok(costs_data) = costs_response.json::<CostsPageResponse>().await {
+                for bucket in &costs_data.data {
+                    for result in &bucket.results {
+                        if let Some(amount) = &result.amount {
+                            total_cost += amount.value.unwrap_or(0.0);
+                        }
+                    }
+                }
+            }
+        }
+        
+        Ok(OrganizationUsage {
+            input_tokens: total_input,
+            output_tokens: total_output,
+            total_requests,
+            total_cost_usd: total_cost,
+            period_start: start_time,
+            period_end: now,
         })
+    }
+    
+    pub async fn is_admin_key(&self) -> bool {
+        let headers = match self.build_headers() {
+            Ok(h) => h,
+            Err(_) => return false,
+        };
+        
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let start_time = now - 86400;
+        
+        let url = format!("{}/completions?start_time={}&limit=1", USAGE_API_URL, start_time);
+        
+        match self.client.get(&url).headers(headers).send().await {
+            Ok(resp) => resp.status().is_success(),
+            Err(_) => false,
+        }
     }
 
     /// Extract usage data and rate limit info from a response
