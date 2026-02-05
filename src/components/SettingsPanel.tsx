@@ -1,29 +1,23 @@
 import { useState, useEffect } from 'react';
-import { Xmark, Key, Eye, EyeClosed, FloppyDisk, Trash, Link as LinkIcon, Timer, Bell, HalfMoon } from 'iconoir-react';
+import { Xmark, Key, Eye, EyeClosed, FloppyDisk, Link as LinkIcon, Timer, Bell, HalfMoon, Plus, Search, Minus } from 'iconoir-react';
 import { invoke } from '@tauri-apps/api/core';
 import { Store } from '@tauri-apps/plugin-store';
 import GlassCard from './GlassCard';
 import PixelCharacter from './PixelCharacter';
+import SadPixelCharacter from './SadPixelCharacter';
 import { useTheme } from '../contexts/ThemeContext';
-
-interface ProviderConfig {
-  provider: 'anthropic' | 'openai' | 'google';
-  name: string;
-  apiKey: string;
-  connected: boolean;
-  oauthConnected?: boolean;
-  error?: string | null;
-}
+import { ProviderConfig, ProviderId, AVAILABLE_PROVIDERS } from '../types/providers';
 
 interface SettingsPanelProps {
   providers: ProviderConfig[];
   onSaveKey: (provider: string, apiKey: string) => Promise<void>;
-  onRemoveKey: (provider: string) => void;
+  onRemoveKey: (provider: ProviderId) => void;
+  onAddProvider: (provider: ProviderId) => void;
   onOAuthConnect?: (provider: string) => Promise<void>;
   onClose: () => void;
 }
 
-export default function SettingsPanel({ providers, onSaveKey, onRemoveKey, onOAuthConnect, onClose }: SettingsPanelProps) {
+export default function SettingsPanel({ providers, onSaveKey, onRemoveKey, onAddProvider, onOAuthConnect, onClose }: SettingsPanelProps) {
   const { preference, setPreference } = useTheme();
   const [editingProvider, setEditingProvider] = useState<string | null>(null);
   const [apiKeyInput, setApiKeyInput] = useState('');
@@ -32,10 +26,23 @@ export default function SettingsPanel({ providers, onSaveKey, onRemoveKey, onOAu
   const [oauthLoading, setOauthLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [showAddProvider, setShowAddProvider] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+
   const [pollingInterval, setPollingInterval] = useState(60);
   const [periodThreshold, setPeriodThreshold] = useState(80);
   const [weeklyThreshold, setWeeklyThreshold] = useState(90);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+
+  const enabledProviderIds = providers.map(p => p.provider);
+  const availableProviders = Object.values(AVAILABLE_PROVIDERS).filter(
+    def => !enabledProviderIds.includes(def.id)
+  );
+  
+  const filteredProviders = availableProviders.filter(def =>
+    def.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    def.description.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   useEffect(() => {
     const loadSettings = async () => {
@@ -133,13 +140,92 @@ export default function SettingsPanel({ providers, onSaveKey, onRemoveKey, onOAu
         </div>
 
         <div className="space-y-3">
-          <div className="text-xs font-semibold text-zinc-500 dark:text-white/40 uppercase tracking-wider mb-3">
-            Provider Configuration
+          <div className="flex items-center justify-between mb-3">
+            <div className="text-xs font-semibold text-zinc-500 dark:text-white/40 uppercase tracking-wider">
+              Active Providers
+            </div>
+            <button
+              onClick={() => setShowAddProvider(!showAddProvider)}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-100 dark:bg-white/[0.05] border border-zinc-300 dark:border-white/[0.08] hover:bg-zinc-200 dark:hover:bg-white/[0.1] text-zinc-700 dark:text-white/80 rounded-lg text-xs font-semibold transition-all"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Add Provider
+            </button>
           </div>
 
+          {showAddProvider && (
+            <GlassCard className="p-4 mb-3">
+              <div className="space-y-3">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 dark:text-white/40" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search providers..."
+                    className="w-full bg-zinc-100 dark:bg-white/[0.03] border border-zinc-300 dark:border-white/[0.08] rounded-lg pl-10 pr-3 py-2 
+                             text-xs text-zinc-900 dark:text-white placeholder-zinc-400 dark:placeholder-white/20
+                             focus:outline-none focus:border-zinc-400 dark:focus:border-white/20"
+                    autoFocus
+                  />
+                </div>
+                
+                {filteredProviders.length > 0 ? (
+                  <div className="space-y-2 max-h-64 overflow-y-auto">
+                    {filteredProviders.map((def) => (
+                      <button
+                        key={def.id}
+                        onClick={() => {
+                          onAddProvider(def.id);
+                          setShowAddProvider(false);
+                          setSearchQuery('');
+                        }}
+                        className="w-full flex items-center gap-3 p-3 bg-zinc-100 dark:bg-white/[0.03] hover:bg-zinc-200 dark:hover:bg-white/[0.08] rounded-lg transition-all text-left"
+                      >
+                        <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: def.color + '20' }}>
+                          <div className="w-4 h-4 rounded" style={{ backgroundColor: def.color }} />
+                        </div>
+                        <div className="flex-1">
+                          <div className="text-sm font-semibold text-zinc-900 dark:text-white">{def.name}</div>
+                          <div className="text-[10px] text-zinc-500 dark:text-white/50">{def.description}</div>
+                        </div>
+                        <Plus className="w-4 h-4 text-zinc-400 dark:text-white/40" />
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-6 text-xs text-zinc-400 dark:text-white/40">
+                    {searchQuery ? 'No providers found' : 'All providers are already added'}
+                  </div>
+                )}
+              </div>
+            </GlassCard>
+          )}
+
+          {providers.length === 0 && !showAddProvider && (
+            <div className="flex flex-col items-center justify-center py-12 gap-4">
+              <SadPixelCharacter size={96} />
+              <div className="text-sm text-zinc-400 dark:text-white/40">
+                Add provider to get started
+              </div>
+            </div>
+          )}
+
           {providers.map((provider) => (
-            <GlassCard key={provider.provider} className="p-4">
-              <div className="flex items-center gap-3 mb-3">
+            <GlassCard key={provider.provider} className="p-4 relative">
+              <button
+                onClick={() => {
+                  if (confirm(`Remove ${provider.name}? This will delete all configuration.`)) {
+                    onRemoveKey(provider.provider);
+                  }
+                }}
+                className="absolute top-3 right-3 p-1 hover:bg-zinc-200 dark:hover:bg-white/[0.1] rounded transition-all text-zinc-400 dark:text-white/40 hover:text-zinc-600 dark:hover:text-white/60"
+                title="Remove provider"
+              >
+                <Minus className="w-3.5 h-3.5" />
+              </button>
+              
+              <div className="flex items-center gap-3 mb-3 pr-8">
                 <PixelCharacter provider={provider.provider} size={32} isActive={provider.connected} />
                 <div className="flex-1">
                   <div className="text-sm font-semibold text-zinc-900 dark:text-white">{provider.name}</div>
@@ -147,10 +233,9 @@ export default function SettingsPanel({ providers, onSaveKey, onRemoveKey, onOAu
                     {provider.connected ? '● Connected' : 'Not configured'}
                   </div>
                 </div>
-                <div className={`w-2 h-2 rounded-full ${provider.connected ? 'bg-green-400 shadow-[0_0_8px_rgba(74,222,128,0.6)]' : 'bg-zinc-300 dark:bg-white/20'}`} />
               </div>
 
-              {editingProvider === provider.provider && provider.provider !== 'anthropic' ? (
+              {editingProvider === provider.provider ? (
                 <div className="space-y-3">
                   <div className="relative">
                     <input
@@ -194,40 +279,65 @@ export default function SettingsPanel({ providers, onSaveKey, onRemoveKey, onOAu
                     </button>
                   </div>
                 </div>
-              ) : provider.provider === 'anthropic' ? (
+              ) : AVAILABLE_PROVIDERS[provider.provider]?.authType === 'both' ? (
                 <div className="space-y-3">
                   {error && (
                     <div className="text-[10px] text-red-500">{error}</div>
                   )}
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => handleOAuthConnect('anthropic')}
-                      disabled={oauthLoading || provider.connected}
-                      className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2
-                               bg-gradient-to-r from-orange-500 to-amber-500 text-white rounded-lg text-xs font-semibold
-                               hover:from-orange-400 hover:to-amber-400
-                               disabled:from-zinc-300 disabled:to-zinc-300 dark:disabled:from-white/10 dark:disabled:to-white/10 disabled:text-zinc-500 dark:disabled:text-white/30 transition-all"
-                    >
-                      <LinkIcon className="w-3.5 h-3.5" />
-                      {oauthLoading ? 'Connecting...' : provider.connected ? 'Connected' : 'Connect with Claude'}
-                    </button>
-                    {provider.connected && (
-                      <button
-                        onClick={() => onRemoveKey(provider.provider)}
-                        className="p-2 bg-zinc-100 dark:bg-white/[0.05] border border-zinc-300 dark:border-white/[0.08] rounded-lg
-                                 text-zinc-400 dark:text-white/40 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-200 dark:hover:bg-white/[0.1] transition-all"
-                      >
-                        <Trash className="w-4 h-4" />
-                      </button>
-                    )}
-                  </div>
+                  
                   {!provider.connected && (
-                    <div className="text-[9px] text-zinc-400 dark:text-white/30 text-center">
-                      Uses your Claude.ai account credentials
+                    <>
+                      <div className="text-[10px] font-semibold text-zinc-500 dark:text-white/50 uppercase tracking-wider">
+                        Choose Authentication Method
+                      </div>
+                      
+                      <button
+                        onClick={() => handleOAuthConnect(provider.provider)}
+                        disabled={oauthLoading}
+                        className="w-full flex items-center justify-center gap-1.5 px-3 py-2
+                                 bg-gradient-to-r from-orange-500 to-amber-500 text-white rounded-lg text-xs font-semibold
+                                 hover:from-orange-400 hover:to-amber-400
+                                 disabled:from-zinc-300 disabled:to-zinc-300 dark:disabled:from-white/10 dark:disabled:to-white/10 disabled:text-zinc-500 dark:disabled:text-white/30 transition-all"
+                      >
+                        <LinkIcon className="w-3.5 h-3.5" />
+                        {oauthLoading ? 'Connecting...' : `Connect with OAuth`}
+                      </button>
+                      
+                      <div className="relative">
+                        <div className="absolute inset-0 flex items-center">
+                          <div className="w-full border-t border-zinc-200 dark:border-white/[0.08]"></div>
+                        </div>
+                        <div className="relative flex justify-center text-[9px] uppercase">
+                          <span className="bg-white dark:bg-zinc-900 px-2 text-zinc-400 dark:text-white/40">or</span>
+                        </div>
+                      </div>
+                      
+                      <button
+                        onClick={() => setEditingProvider(provider.provider)}
+                        className="w-full flex items-center justify-center gap-1.5 px-3 py-2
+                                 bg-zinc-100 dark:bg-white/[0.05] border border-zinc-300 dark:border-white/[0.08] rounded-lg
+                                 text-xs font-semibold text-zinc-600 dark:text-white/60 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-200 dark:hover:bg-white/[0.1] transition-all"
+                      >
+                        <Key className="w-3.5 h-3.5" />
+                        Use API Key
+                      </button>
+                    </>
+                  )}
+                  
+                  {provider.connected && (
+                    <div className="flex gap-2">
+                      <button
+                        disabled
+                        className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2
+                                 bg-zinc-100 dark:bg-white/[0.05] border border-zinc-300 dark:border-white/[0.08] rounded-lg text-xs font-semibold text-zinc-500 dark:text-white/40"
+                      >
+                        <LinkIcon className="w-3.5 h-3.5" />
+                        Connected
+                      </button>
                     </div>
                   )}
 
-                  {provider.connected && (
+                  {provider.connected && provider.provider === 'anthropic' && (
                     <div className="border-t border-zinc-200 dark:border-white/[0.05] pt-3 mt-3">
                       <div className="flex items-center gap-2 mb-3">
                         <Bell className="w-3.5 h-3.5 text-zinc-400 dark:text-white/40" />
@@ -290,55 +400,37 @@ export default function SettingsPanel({ providers, onSaveKey, onRemoveKey, onOAu
               ) : provider.provider === 'openai' ? (
                 <div className="space-y-3">
                   {(error || provider.error) && (
-                    <div className="text-[10px] text-red-500">{error || provider.error}</div>
+                    <div className="p-2 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/30 rounded-lg">
+                      <div className="text-[10px] text-red-600 dark:text-red-400 leading-relaxed">
+                        {error || provider.error}
+                      </div>
+                    </div>
                   )}
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => setEditingProvider('openai')}
-                      className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2
-                               bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-lg text-xs font-semibold
-                               hover:from-emerald-500 hover:to-teal-500 transition-all"
-                    >
-                      <Key className="w-3.5 h-3.5" />
-                      {provider.connected ? 'Update Admin Key' : 'Add Admin Key'}
-                    </button>
-                    {provider.connected && (
-                      <button
-                        onClick={() => onRemoveKey('openai')}
-                        className="p-2 bg-zinc-100 dark:bg-white/[0.05] border border-zinc-300 dark:border-white/[0.08] rounded-lg
-                                 text-zinc-400 dark:text-white/40 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-200 dark:hover:bg-white/[0.1] transition-all"
-                      >
-                        <Trash className="w-4 h-4" />
-                      </button>
-                    )}
-                  </div>
+                  <button
+                    onClick={() => setEditingProvider('openai')}
+                    className="w-full flex items-center justify-center gap-1.5 px-3 py-2
+                             bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-lg text-xs font-semibold
+                             hover:from-emerald-500 hover:to-teal-500 transition-all"
+                  >
+                    <Key className="w-3.5 h-3.5" />
+                    {provider.connected ? 'Update Admin Key' : 'Add Admin Key'}
+                  </button>
                   {!provider.connected && (
-                    <div className="text-[9px] text-zinc-400 dark:text-white/30 text-center">
-                      Requires Admin API key from platform.openai.com/settings
+                    <div className="text-[9px] text-zinc-400 dark:text-white/30 text-center leading-relaxed">
+                      Requires Admin API key from platform.openai.com/settings with organization usage permissions
                     </div>
                   )}
                 </div>
               ) : (
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setEditingProvider(provider.provider)}
-                    className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2
-                             bg-zinc-100 dark:bg-white/[0.05] border border-zinc-300 dark:border-white/[0.08] rounded-lg
-                             text-xs font-semibold text-zinc-600 dark:text-white/60 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-200 dark:hover:bg-white/[0.1] transition-all"
-                  >
-                    <Key className="w-3.5 h-3.5" />
-                    {provider.connected ? 'Update Key' : 'Add Key'}
-                  </button>
-                  {provider.connected && (
-                    <button
-                      onClick={() => onRemoveKey(provider.provider)}
-                      className="p-2 bg-zinc-100 dark:bg-white/[0.05] border border-zinc-300 dark:border-white/[0.08] rounded-lg
-                               text-zinc-400 dark:text-white/40 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-200 dark:hover:bg-white/[0.1] transition-all"
-                    >
-                      <Trash className="w-4 h-4" />
-                    </button>
-                  )}
-                </div>
+                <button
+                  onClick={() => setEditingProvider(provider.provider)}
+                  className="w-full flex items-center justify-center gap-1.5 px-3 py-2
+                           bg-zinc-100 dark:bg-white/[0.05] border border-zinc-300 dark:border-white/[0.08] rounded-lg
+                           text-xs font-semibold text-zinc-600 dark:text-white/60 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-200 dark:hover:bg-white/[0.1] transition-all"
+                >
+                  <Key className="w-3.5 h-3.5" />
+                  {provider.connected ? 'Update Key' : 'Add Key'}
+                </button>
               )}
             </GlassCard>
           ))}

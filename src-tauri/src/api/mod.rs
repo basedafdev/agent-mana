@@ -1,5 +1,6 @@
 pub mod anthropic;
 pub mod claude_oauth;
+pub mod gemini;
 pub mod openai;
 
 pub use anthropic::{
@@ -11,6 +12,10 @@ pub use anthropic::{
 pub use claude_oauth::{
     ClaudeOAuthClient, ClaudeOAuthError, UsageResponse as ClaudeUsageResponse,
     UsagePeriod as ClaudeUsagePeriod, ProfileResponse as ClaudeProfileResponse,
+};
+
+pub use gemini::{
+    GeminiClient, GeminiError, Result as GeminiResult,
 };
 
 pub use openai::{

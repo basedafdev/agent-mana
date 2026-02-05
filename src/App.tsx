@@ -40,32 +40,7 @@ function AppContent() {
   
   const [providerConfigs, setProviderConfigs] = useState<ProviderConfig[]>([]);
 
-  const [characterStats, setCharacterStats] = useState<CharacterStats[]>([
-    {
-      provider: 'anthropic',
-      name: 'Claude',
-      weeklyUtilization: 0,
-      periodUtilization: 0,
-      periodName: '5HR',
-      connected: false,
-    },
-    {
-      provider: 'openai',
-      name: 'Codex',
-      weeklyUtilization: 0,
-      periodUtilization: 0,
-      periodName: '3HR',
-      connected: false,
-    },
-    {
-      provider: 'google',
-      name: 'Gemini',
-      weeklyUtilization: 0,
-      periodUtilization: 0,
-      periodName: '1MIN',
-      connected: false,
-    },
-  ]);
+  const [characterStats, setCharacterStats] = useState<CharacterStats[]>([]);
 
   const [hourlyUsage] = useState(() => {
     return Array.from({ length: 24 }, (_, i) => ({
@@ -75,14 +50,127 @@ function AppContent() {
     }));
   });
 
+  const loadEnabledProviders = async () => {
+    try {
+      const store = await Store.load('settings.json');
+      const enabledProviderIds = await store.get<ProviderId[]>('enabledProviders');
+      
+      if (enabledProviderIds && enabledProviderIds.length > 0) {
+        const configs: ProviderConfig[] = enabledProviderIds.map(id => {
+          const def = AVAILABLE_PROVIDERS[id];
+          return {
+            provider: id,
+            name: def.name,
+            apiKey: '',
+            connected: false,
+          };
+        });
+        setProviderConfigs(configs);
+        
+        const stats: CharacterStats[] = enabledProviderIds.map(id => {
+          const def = AVAILABLE_PROVIDERS[id];
+          return {
+            provider: id,
+            name: def.name,
+            weeklyUtilization: 0,
+            periodUtilization: 0,
+            periodName: id === 'anthropic' ? '5HR' : id === 'openai' ? '3HR' : '1MIN',
+            connected: false,
+          };
+        });
+        setCharacterStats(stats);
+      } else {
+        const defaultProviders: ProviderId[] = ['anthropic', 'openai'];
+        const configs: ProviderConfig[] = defaultProviders.map(id => {
+          const def = AVAILABLE_PROVIDERS[id];
+          return {
+            provider: id,
+            name: def.name,
+            apiKey: '',
+            connected: false,
+          };
+        });
+        setProviderConfigs(configs);
+        
+        const stats: CharacterStats[] = defaultProviders.map(id => {
+          const def = AVAILABLE_PROVIDERS[id];
+          return {
+            provider: id,
+            name: def.name,
+            weeklyUtilization: 0,
+            periodUtilization: 0,
+            periodName: id === 'anthropic' ? '5HR' : '3HR',
+            connected: false,
+          };
+        });
+        setCharacterStats(stats);
+        
+        await store.set('enabledProviders', defaultProviders);
+        await store.save();
+      }
+    } catch (error) {
+      console.error('Failed to load enabled providers:', error);
+    }
+  };
+
+  const saveEnabledProviders = async (providerIds: ProviderId[]) => {
+    try {
+      const store = await Store.load('settings.json');
+      await store.set('enabledProviders', providerIds);
+      await store.save();
+    } catch (error) {
+      console.error('Failed to save enabled providers:', error);
+    }
+  };
+
+  const handleAddProvider = async (providerId: ProviderId) => {
+    const def = AVAILABLE_PROVIDERS[providerId];
+    const newConfig: ProviderConfig = {
+      provider: providerId,
+      name: def.name,
+      apiKey: '',
+      connected: false,
+    };
+    const newStat: CharacterStats = {
+      provider: providerId,
+      name: def.name,
+      weeklyUtilization: 0,
+      periodUtilization: 0,
+      periodName: providerId === 'anthropic' ? '5HR' : providerId === 'openai' ? '3HR' : '1MIN',
+      connected: false,
+    };
+    
+    setProviderConfigs(prev => [...prev, newConfig]);
+    setCharacterStats(prev => [...prev, newStat]);
+    
+    const newProviderIds = [...providerConfigs.map(p => p.provider), providerId];
+    await saveEnabledProviders(newProviderIds);
+  };
+
+  const handleRemoveProvider = async (providerId: ProviderId) => {
+    setProviderConfigs(prev => prev.filter(p => p.provider !== providerId));
+    setCharacterStats(prev => prev.filter(s => s.provider !== providerId));
+    
+    const newProviderIds = providerConfigs.filter(p => p.provider !== providerId).map(p => p.provider);
+    await saveEnabledProviders(newProviderIds);
+    
+    try {
+      await invoke('remove_api_key', { provider: providerId });
+    } catch (error) {
+      console.error('Failed to remove provider:', error);
+    }
+  };
+
   const loadProviderStatus = async () => {
     try {
       const anthropicStatus = await invoke<ProviderStatus>('get_provider_status', { provider: 'anthropic' });
       const openaiStatus = await invoke<ProviderStatus>('get_provider_status', { provider: 'openai' });
+      const geminiStatus = await invoke<ProviderStatus>('get_provider_status', { provider: 'google' });
       
       setProviderConfigs(prev => prev.map(p => {
         if (p.provider === 'anthropic') return { ...p, connected: anthropicStatus.connected, error: anthropicStatus.error };
         if (p.provider === 'openai') return { ...p, connected: openaiStatus.connected, error: openaiStatus.error };
+        if (p.provider === 'google') return { ...p, connected: geminiStatus.connected, error: geminiStatus.error };
         return p;
       }));
 
@@ -121,6 +209,9 @@ function AppContent() {
           }
           return { ...s, connected: openaiStatus.connected };
         }
+        if (s.provider === 'google') {
+          return { ...s, connected: geminiStatus.connected };
+        }
         return s;
       }));
 
@@ -158,14 +249,7 @@ function AppContent() {
     }
   };
 
-  const handleRemoveKey = async (provider: string) => {
-    try {
-      await invoke('remove_api_key', { provider });
-      await loadProviderStatus();
-    } catch (error) {
-      console.error('Failed to remove key:', error);
-    }
-  };
+
 
   const handleOAuthConnect = async (_provider: string) => {
     await loadProviderStatus();
@@ -178,10 +262,16 @@ function AppContent() {
   };
 
   useEffect(() => {
-    loadProviderStatus();
-    const interval = setInterval(loadProviderStatus, 60000);
-    return () => clearInterval(interval);
+    loadEnabledProviders();
   }, []);
+
+  useEffect(() => {
+    if (providerConfigs.length > 0) {
+      loadProviderStatus();
+      const interval = setInterval(loadProviderStatus, 60000);
+      return () => clearInterval(interval);
+    }
+  }, [providerConfigs.length]);
 
   const connectedCharacters = characterStats.filter(c => c.connected);
   const disconnectedCharacters = characterStats.filter(c => !c.connected);
@@ -268,7 +358,8 @@ function AppContent() {
         <SettingsPanel
           providers={providerConfigs}
           onSaveKey={handleSaveKey}
-          onRemoveKey={handleRemoveKey}
+          onRemoveKey={handleRemoveProvider}
+          onAddProvider={handleAddProvider}
           onOAuthConnect={handleOAuthConnect}
           onClose={() => setShowSettings(false)}
         />

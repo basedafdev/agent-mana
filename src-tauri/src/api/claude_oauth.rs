@@ -33,6 +33,18 @@ pub struct UsageResponse {
     pub seven_day: Option<UsagePeriod>,
     pub seven_day_oauth_apps: Option<UsagePeriod>,
     pub seven_day_opus: Option<UsagePeriod>,
+    pub seven_day_sonnet: Option<UsagePeriod>,
+    pub seven_day_cowork: Option<UsagePeriod>,
+    pub iguana_necktie: Option<serde_json::Value>,
+    pub extra_usage: Option<ExtraUsage>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExtraUsage {
+    pub is_enabled: bool,
+    pub monthly_limit: Option<f64>,
+    pub used_credits: Option<f64>,
+    pub utilization: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -186,8 +198,14 @@ impl ClaudeOAuthClient {
             });
         }
         
-        response.json().await.map_err(|e| {
-            ClaudeOAuthError::ParseError(format!("Failed to parse usage response: {}", e))
+        let response_text = response.text().await.map_err(|e| {
+            ClaudeOAuthError::ParseError(format!("Failed to read response body: {}", e))
+        })?;
+        
+        eprintln!("Claude OAuth usage response body: {}", response_text);
+        
+        serde_json::from_str(&response_text).map_err(|e| {
+            ClaudeOAuthError::ParseError(format!("Failed to parse usage response: {} | Response body: {}", e, response_text))
         })
     }
 

@@ -42,12 +42,24 @@ pub fn run() {
         last_updated: 0,
     }));
     
+    let gemini_status = Arc::new(RwLock::new(ProviderStatus {
+        provider: "google".to_string(),
+        connected: false,
+        usage: None,
+        claude_usage: None,
+        codex_usage: None,
+        rate_limit: None,
+        error: None,
+        last_updated: 0,
+    }));
+    
     let notification_service = Arc::new(RwLock::new(NotificationService::new()));
     
     let app_state = AppState {
         keychain,
         anthropic_status: Arc::clone(&anthropic_status),
         openai_status: Arc::clone(&openai_status),
+        gemini_status: Arc::clone(&gemini_status),
         notification_service: Arc::clone(&notification_service),
     };
     

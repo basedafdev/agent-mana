@@ -302,10 +302,11 @@ impl OpenAIClient {
         Ok(headers)
     }
 
-    /// Validate the API key by fetching the models list
+    /// Validate the API key by checking organization usage access
     ///
-    /// This sends a request to the /models endpoint to verify authentication.
-    /// Returns `Ok(true)` if the API key is valid, or an error otherwise.
+    /// This sends a request to the /organization/usage endpoint to verify admin key authentication.
+    /// Admin keys require access to organization usage data, so this validates both authentication
+    /// and proper permissions. Returns `Ok(true)` if the API key is valid and has admin access.
     ///
     /// # Example
     /// ```no_run
@@ -313,7 +314,7 @@ impl OpenAIClient {
     /// # let client = OpenAIClient::new("sk-...".to_string());
     /// let is_valid = client.validate_key().await?;
     /// if is_valid {
-    ///     println!("API key is valid!");
+    ///     println!("Admin API key is valid!");
     /// }
     /// # Ok(())
     /// # }
@@ -321,9 +322,21 @@ impl OpenAIClient {
     pub async fn validate_key(&self) -> Result<bool> {
         let headers = self.build_headers()?;
 
+        // Use a minimal time range (1 day) to check admin key access
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let start_time = now - 86400; // 24 hours ago
+
+        let url = format!(
+            "{}/completions?start_time={}&limit=1",
+            USAGE_API_URL, start_time
+        );
+
         let response = self
             .client
-            .get(format!("{}/models", API_BASE_URL))
+            .get(&url)
             .headers(headers)
             .send()
             .await?;
@@ -334,6 +347,11 @@ impl OpenAIClient {
             Ok(true)
         } else if status.as_u16() == 401 {
             Err(OpenAIError::AuthenticationFailed)
+        } else if status.as_u16() == 403 {
+            Err(OpenAIError::ApiError {
+                status: 403,
+                message: "This API key does not have admin permissions. Please create an Admin API key from platform.openai.com/settings with 'All' or 'Read' permissions for organization usage data.".to_string(),
+            })
         } else if status.as_u16() == 429 {
             Err(OpenAIError::RateLimitExceeded)
         } else {
@@ -445,8 +463,14 @@ impl OpenAIClient {
             });
         }
         
-        let usage_response: UsagePageResponse = response.json().await.map_err(|e| {
-            OpenAIError::ParseError(format!("Failed to parse usage response: {}", e))
+        let response_text = response.text().await.map_err(|e| {
+            OpenAIError::ParseError(format!("Failed to read response body: {}", e))
+        })?;
+        
+        eprintln!("OpenAI usage response body: {}", response_text);
+        
+        let usage_response: UsagePageResponse = serde_json::from_str(&response_text).map_err(|e| {
+            OpenAIError::ParseError(format!("Failed to parse usage response: {} | Response body: {}", e, response_text))
         })?;
         
         let mut total_input = 0u64;

@@ -10,6 +10,7 @@ pub struct AppState {
     pub keychain: KeychainManager,
     pub anthropic_status: Arc<RwLock<ProviderStatus>>,
     pub openai_status: Arc<RwLock<ProviderStatus>>,
+    pub gemini_status: Arc<RwLock<ProviderStatus>>,
     pub notification_service: Arc<RwLock<NotificationService>>,
 }
 
@@ -21,6 +22,7 @@ pub async fn get_provider_status(
     match provider.as_str() {
         "anthropic" => Ok(state.anthropic_status.read().await.clone()),
         "openai" => Ok(state.openai_status.read().await.clone()),
+        "google" => Ok(state.gemini_status.read().await.clone()),
         _ => Err("Unknown provider".to_string()),
     }
 }
@@ -82,6 +84,32 @@ pub async fn save_api_key(
                 status.error = Some(format!("Error: {}", e));
             }
         }
+    } else if provider == "google" {
+        use crate::api::gemini::GeminiClient;
+        
+        let client = GeminiClient::new(api_key);
+        
+        match client.validate_key().await {
+            Ok(true) => {
+                let mut status = state.gemini_status.write().await;
+                status.connected = true;
+                status.error = None;
+                status.last_updated = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs();
+            }
+            Ok(false) => {
+                let mut status = state.gemini_status.write().await;
+                status.connected = false;
+                status.error = Some("Invalid API key".to_string());
+            }
+            Err(e) => {
+                let mut status = state.gemini_status.write().await;
+                status.connected = false;
+                status.error = Some(format!("Error: {}", e));
+            }
+        }
     }
     
     Ok(())
@@ -100,6 +128,12 @@ pub async fn remove_api_key(
         let mut status = state.openai_status.write().await;
         status.connected = false;
         status.codex_usage = None;
+        status.error = None;
+    }
+    
+    if provider == "google" {
+        let mut status = state.gemini_status.write().await;
+        status.connected = false;
         status.error = None;
     }
     

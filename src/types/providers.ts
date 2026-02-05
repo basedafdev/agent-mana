@@ -4,7 +4,7 @@ export interface ProviderDefinition {
   id: ProviderId;
   name: string;
   description: string;
-  authType: 'oauth' | 'api_key';
+  authType: 'oauth' | 'api_key' | 'both';
   color: string;
 }
 
@@ -12,8 +12,8 @@ export const AVAILABLE_PROVIDERS: Record<ProviderId, ProviderDefinition> = {
   anthropic: {
     id: 'anthropic',
     name: 'Claude',
-    description: 'Anthropic Claude AI with OAuth authentication',
-    authType: 'oauth',
+    description: 'Anthropic Claude AI (OAuth or API key)',
+    authType: 'both',
     color: '#D97757',
   },
   openai: {
