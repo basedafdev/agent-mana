@@ -71,7 +71,7 @@ impl PollingService {
             return;
         }
 
-        match ClaudeOAuthClient::from_credentials_file() {
+        match ClaudeOAuthClient::from_credentials_file_with_refresh().await {
             Ok(client) => {
                 Self::fetch_and_update_usage(client, anthropic_status, codex_connected, notification_service, app_handle).await;
             }
@@ -112,7 +112,7 @@ impl PollingService {
                 Self::update_tray_connected(weekly_util.unwrap_or(0.0), period_util, codex_connected, app_handle);
 
                 let status = anthropic_status.read().await;
-                let notifier = notification_service.read().await;
+                let mut notifier = notification_service.write().await;
                 notifier.check_and_notify(&status, app_handle);
             }
             Err(e) => {
@@ -128,10 +128,17 @@ impl PollingService {
         codex_connected: bool,
         app_handle: &AppHandle,
     ) {
+        let error_str = e.to_string();
+        let error_message = if error_str.contains("TOKEN_EXPIRED_NEEDS_REAUTH") {
+            "TOKEN_EXPIRED_NEEDS_REAUTH".to_string()
+        } else {
+            format!("OAuth error: {}", error_str)
+        };
+        
         {
             let mut status = anthropic_status.write().await;
             status.connected = false;
-            status.error = Some(format!("OAuth error: {}", e));
+            status.error = Some(error_message);
         }
         Self::update_tray_disconnected(codex_connected, app_handle);
     }

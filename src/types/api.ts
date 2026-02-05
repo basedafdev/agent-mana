@@ -43,6 +43,8 @@ export interface NotificationThreshold {
   token_limit?: number;
   cost_limit?: number;
   rate_limit_percentage?: number;
+  period_utilization_threshold?: number;
+  weekly_utilization_threshold?: number;
   enabled: boolean;
 }
 

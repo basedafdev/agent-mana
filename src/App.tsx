@@ -180,6 +180,7 @@ function AppContent() {
           return {
             ...s,
             connected: anthropicStatus.connected,
+            error: anthropicStatus.error ?? undefined,
             periodUtilization: usage.period_utilization,
             periodResetTime: usage.period_resets_at ? new Date(usage.period_resets_at) : undefined,
             weeklyUtilization: usage.weekly_utilization ?? 0,
@@ -187,7 +188,7 @@ function AppContent() {
           };
         }
         if (s.provider === 'anthropic') {
-          return { ...s, connected: anthropicStatus.connected };
+          return { ...s, connected: anthropicStatus.connected, error: anthropicStatus.error ?? undefined };
         }
         if (s.provider === 'openai') {
           if (openaiStatus.codex_usage) {
@@ -196,6 +197,7 @@ function AppContent() {
             return {
               ...s,
               connected: openaiStatus.connected,
+              error: openaiStatus.error ?? undefined,
               periodUtilization: 0,
               weeklyUtilization: 0,
               codexUsage: {
@@ -207,10 +209,10 @@ function AppContent() {
               },
             };
           }
-          return { ...s, connected: openaiStatus.connected };
+          return { ...s, connected: openaiStatus.connected, error: openaiStatus.error ?? undefined };
         }
         if (s.provider === 'google') {
-          return { ...s, connected: geminiStatus.connected };
+          return { ...s, connected: geminiStatus.connected, error: geminiStatus.error ?? undefined };
         }
         return s;
       }));
@@ -253,6 +255,15 @@ function AppContent() {
 
   const handleOAuthConnect = async (_provider: string) => {
     await loadProviderStatus();
+  };
+
+  const handleReconnect = async (provider: ProviderId) => {
+    try {
+      await invoke('start_oauth_flow', { provider });
+      await loadProviderStatus();
+    } catch (error) {
+      console.error('Failed to reconnect:', error);
+    }
   };
 
   const handleRefresh = async () => {
@@ -312,7 +323,7 @@ function AppContent() {
         {connectedCharacters.length > 0 && (
           <div className="space-y-3">
             {connectedCharacters.map((stats) => (
-              <CharacterCard key={stats.provider} stats={stats} />
+              <CharacterCard key={stats.provider} stats={stats} onReconnect={handleReconnect} />
             ))}
           </div>
         )}
@@ -326,7 +337,7 @@ function AppContent() {
         {disconnectedCharacters.length > 0 && (
           <div className="space-y-2">
             {disconnectedCharacters.map((stats) => (
-              <CharacterCard key={stats.provider} stats={stats} />
+              <CharacterCard key={stats.provider} stats={stats} onReconnect={handleReconnect} />
             ))}
           </div>
         )}

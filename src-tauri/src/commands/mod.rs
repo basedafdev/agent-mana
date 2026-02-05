@@ -160,7 +160,7 @@ pub async fn start_oauth_flow(
     }
 
     let should_start_oauth = if ClaudeOAuthClient::has_credentials() {
-        match ClaudeOAuthClient::from_credentials_file() {
+        match ClaudeOAuthClient::from_credentials_file_with_refresh().await {
             Ok(client) => {
                 match client.get_usage().await {
                     Ok(usage) => {

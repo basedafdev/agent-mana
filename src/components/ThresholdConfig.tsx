@@ -14,8 +14,11 @@ export default function ThresholdConfig({ provider, currentThreshold, onSave, on
   const [tokenLimit, setTokenLimit] = useState(currentThreshold?.token_limit?.toString() ?? '');
   const [costLimit, setCostLimit] = useState(currentThreshold?.cost_limit?.toString() ?? '');
   const [rateLimitPct, setRateLimitPct] = useState(currentThreshold?.rate_limit_percentage?.toString() ?? '80');
+  const [periodThreshold, setPeriodThreshold] = useState(currentThreshold?.period_utilization_threshold?.toString() ?? '80');
+  const [weeklyThreshold, setWeeklyThreshold] = useState(currentThreshold?.weekly_utilization_threshold?.toString() ?? '80');
 
   const providerName = provider === 'anthropic' ? 'Anthropic' : 'OpenAI';
+  const isAnthropic = provider === 'anthropic';
 
   const handleSave = () => {
     onSave({
@@ -24,6 +27,8 @@ export default function ThresholdConfig({ provider, currentThreshold, onSave, on
       token_limit: tokenLimit ? parseInt(tokenLimit) : undefined,
       cost_limit: costLimit ? parseFloat(costLimit) : undefined,
       rate_limit_percentage: rateLimitPct ? parseInt(rateLimitPct) : undefined,
+      period_utilization_threshold: periodThreshold ? parseFloat(periodThreshold) : undefined,
+      weekly_utilization_threshold: weeklyThreshold ? parseFloat(weeklyThreshold) : undefined,
     });
   };
 
@@ -76,22 +81,68 @@ export default function ThresholdConfig({ provider, currentThreshold, onSave, on
               />
             </div>
 
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-white/50">Rate Limit Warning (%)</label>
-              <input
-                type="number"
-                min="0"
-                max="100"
-                value={rateLimitPct}
-                onChange={(e) => setRateLimitPct(e.target.value)}
-                className="w-full bg-white/[0.03] border border-white/[0.08] rounded-xl px-4 py-3 font-mono text-sm 
-                         focus:outline-none focus:border-white/20 focus:bg-white/[0.05]
-                         text-white placeholder-white/20 transition-all"
-              />
-              <p className="text-xs text-white/30">
-                Alert when rate limit drops below this percentage
-              </p>
-            </div>
+            {!isAnthropic && (
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-white/50">Rate Limit Warning (%)</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  value={rateLimitPct}
+                  onChange={(e) => setRateLimitPct(e.target.value)}
+                  className="w-full bg-white/[0.03] border border-white/[0.08] rounded-xl px-4 py-3 font-mono text-sm 
+                           focus:outline-none focus:border-white/20 focus:bg-white/[0.05]
+                           text-white placeholder-white/20 transition-all"
+                />
+                <p className="text-xs text-white/30">
+                  Alert when API rate limit drops below this percentage
+                </p>
+              </div>
+            )}
+
+            {isAnthropic && (
+              <>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-white/50">5-Hour Usage Alert (%)</label>
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    value={periodThreshold}
+                    onChange={(e) => setPeriodThreshold(e.target.value)}
+                    className="w-full accent-amber-500"
+                  />
+                  <div className="flex justify-between text-xs text-white/30">
+                    <span>0%</span>
+                    <span className="text-amber-400 font-mono">{periodThreshold}%</span>
+                    <span>100%</span>
+                  </div>
+                  <p className="text-xs text-white/30">
+                    Alert when 5-hour utilization reaches this level
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-white/50">Weekly Usage Alert (%)</label>
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    value={weeklyThreshold}
+                    onChange={(e) => setWeeklyThreshold(e.target.value)}
+                    className="w-full accent-purple-500"
+                  />
+                  <div className="flex justify-between text-xs text-white/30">
+                    <span>0%</span>
+                    <span className="text-purple-400 font-mono">{weeklyThreshold}%</span>
+                    <span>100%</span>
+                  </div>
+                  <p className="text-xs text-white/30">
+                    Alert when weekly utilization reaches this level
+                  </p>
+                </div>
+              </>
+            )}
           </div>
         )}
 

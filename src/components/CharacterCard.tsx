@@ -21,30 +21,49 @@ export interface CharacterStats {
   periodName: string;
   connected: boolean;
   codexUsage?: CodexUsage;
+  error?: string;
 }
 
 interface CharacterCardProps {
   stats: CharacterStats;
+  onReconnect?: (provider: ProviderId) => void;
 }
 
-export default function CharacterCard({ stats }: CharacterCardProps) {
+export default function CharacterCard({ stats, onReconnect }: CharacterCardProps) {
   const weeklyRemaining = 100 - stats.weeklyUtilization;
   const periodRemaining = 100 - stats.periodUtilization;
   const isLow = weeklyRemaining < 25 || periodRemaining < 25;
+  const needsReauth = stats.error === 'TOKEN_EXPIRED_NEEDS_REAUTH';
 
   if (!stats.connected) {
     return (
-      <GlassCard className="p-4 opacity-40">
+      <GlassCard className={`p-4 ${needsReauth ? 'opacity-80 border-amber-500/50' : 'opacity-40'}`}>
         <div className="flex items-center gap-4">
           <div className="relative">
             <PixelCharacter provider={stats.provider} size={48} isLow={true} isActive={false} />
             <div className="absolute inset-0 flex items-center justify-center">
-              <span className="text-[8px] font-bold text-[var(--text-muted)] bg-[var(--bg-card)] px-1">OFF</span>
+              <span className="text-[8px] font-bold text-[var(--text-muted)] bg-[var(--bg-card)] px-1">
+                {needsReauth ? 'EXP' : 'OFF'}
+              </span>
             </div>
           </div>
           <div className="flex-1 min-w-0">
             <div className="text-sm font-bold text-[var(--text-muted)] mb-2">{stats.name}</div>
-            <div className="text-[10px] text-[var(--text-muted)]">Not configured</div>
+            {needsReauth ? (
+              <div className="space-y-2">
+                <div className="text-[10px] text-amber-500 font-medium">Session expired - reconnect required</div>
+                {onReconnect && (
+                  <button
+                    onClick={() => onReconnect(stats.provider)}
+                    className="text-[10px] font-semibold text-amber-400 hover:text-amber-300 bg-amber-500/20 hover:bg-amber-500/30 px-3 py-1 rounded-md transition-all"
+                  >
+                    Reconnect
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="text-[10px] text-[var(--text-muted)]">Not configured</div>
+            )}
           </div>
         </div>
       </GlassCard>
