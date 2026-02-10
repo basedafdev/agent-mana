@@ -1,6 +1,6 @@
 [package]
 name = "agent-mana"
-version = "0.1.1"
+version = "0.1.2"
 description = "AI usage monitoring desktop app - track Anthropic and OpenAI API usage"
 authors = ["you"]
 edition = "2021"
