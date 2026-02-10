@@ -131,7 +131,9 @@ install_macos() {
     hdiutil attach "$TEMP_DMG" -mountpoint "$MOUNT_POINT" -nobrowse -quiet
 
     local APP_NAME
-    APP_NAME=$(find "$MOUNT_POINT" -maxdepth 1 -name '*.app' -print -quit | xargs basename)
+    local APP_PATH
+    APP_PATH=$(find "$MOUNT_POINT" -maxdepth 1 -name '*.app' -print -quit)
+    APP_NAME=$(basename "$APP_PATH")
 
     if [ -z "$APP_NAME" ]; then
         hdiutil detach "$MOUNT_POINT" -quiet
@@ -140,7 +142,7 @@ install_macos() {
     fi
 
     rm -rf "/Applications/${APP_NAME}"
-    cp -R "${MOUNT_POINT}/${APP_NAME}" /Applications/
+    cp -R "${MOUNT_POINT}/${APP_NAME}" "/Applications/"
 
     hdiutil detach "$MOUNT_POINT" -quiet
     rm -f "$TEMP_DMG"
