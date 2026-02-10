@@ -97,14 +97,15 @@ export default function StatBar({ type, utilization, label, resetTime }: StatBar
           <div className={`absolute inset-0 animate-pulse ${hpColors.pulse}`} />
         )}
 
-        {showTooltip && resetTime && (
-          <div className="absolute -top-8 left-1/2 -translate-x-1/2 px-2 py-1 
-                        bg-zinc-800 dark:bg-black/90 border border-zinc-600 dark:border-white/10 rounded text-[9px] text-white 
-                        whitespace-nowrap z-10 pointer-events-none">
-            {formatTimeUntil(resetTime)}
-          </div>
-        )}
       </div>
+
+      {showTooltip && (
+        <div className="absolute -top-6 left-1/2 -translate-x-1/2 px-2 py-1 
+                      bg-zinc-800 dark:bg-black/90 border border-zinc-600 dark:border-white/10 rounded text-[9px] text-white 
+                      whitespace-nowrap z-50 pointer-events-none shadow-lg">
+          You've used {Math.round(utilization)}% of your {(label || (type === 'hp' ? 'weekly' : 'period')).toLowerCase()} limit{resetTime ? ` · ${formatTimeUntil(resetTime)}` : ''}
+        </div>
+      )}
     </div>
   );
 }

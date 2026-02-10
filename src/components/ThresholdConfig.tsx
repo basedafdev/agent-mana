@@ -118,7 +118,7 @@ export default function ThresholdConfig({ provider, currentThreshold, onSave, on
                     <span>100%</span>
                   </div>
                   <p className="text-xs text-white/30">
-                    Alert when 5-hour utilization reaches this level
+                    Notify when you've used {periodThreshold}% of your 5-hour limit
                   </p>
                 </div>
 
@@ -138,7 +138,7 @@ export default function ThresholdConfig({ provider, currentThreshold, onSave, on
                     <span>100%</span>
                   </div>
                   <p className="text-xs text-white/30">
-                    Alert when weekly utilization reaches this level
+                    Notify when you've used {weeklyThreshold}% of your weekly limit
                   </p>
                 </div>
               </>

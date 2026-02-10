@@ -5,80 +5,59 @@ on:
     tags:
       - 'v*'
 
+permissions:
+  contents: write
+
 jobs:
-  build:
+  publish:
     strategy:
+      fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-            artifact_name: agent-mana
-            asset_name: agent-mana-x86_64-unknown-linux-gnu
-          - os: ubuntu-latest
-            target: aarch64-unknown-linux-gnu
-            artifact_name: agent-mana
-            asset_name: agent-mana-aarch64-unknown-linux-gnu
-          - os: macos-latest
-            target: x86_64-apple-darwin
-            artifact_name: agent-mana
-            asset_name: agent-mana-x86_64-apple-darwin
-          - os: macos-latest
-            target: aarch64-apple-darwin
-            artifact_name: agent-mana
-            asset_name: agent-mana-aarch64-apple-darwin
+          - platform: macos-latest
+            args: '--target aarch64-apple-darwin'
+          - platform: macos-latest
+            args: '--target x86_64-apple-darwin'
+          - platform: ubuntu-22.04
+            args: ''
 
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ matrix.platform }}
 
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install Linux dependencies
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: lts/*
+          cache: npm
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.target }}
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
-      - name: Install dependencies
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - name: Install Linux dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+
+      - name: Install frontend dependencies
         run: npm install
 
-      - name: Build frontend
-        run: npm run build
-
-      - name: Build Tauri app
-        run: npm run tauri build -- --target ${{ matrix.target }}
-
-      - name: Upload binary
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.asset_name }}
-          path: src-tauri/target/${{ matrix.target }}/release/bundle/**/*
-
-  release:
-    needs: build
-    runs-on: ubuntu-latest
-    
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-
-      - name: Create Release
-        uses: softprops/action-gh-release@v1
-        with:
-          files: |
-            **/agent-mana*
-          draft: false
-          prerelease: false
+      - uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: 'Agent Mana ${{ github.ref_name }}'
+          releaseBody: 'See the assets to download and install this version.'
+          releaseDraft: false
+          prerelease: false
+          args: ${{ matrix.args }}

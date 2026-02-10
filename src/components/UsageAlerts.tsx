@@ -154,6 +154,9 @@ export default function UsageAlerts({
                   {newThreshold}%
                 </span>
               </div>
+              <p className="text-[10px] text-zinc-400 dark:text-white/30">
+                Notify when you've used {newThreshold}% of your {addingType === 'period' ? '5-hour' : 'weekly'} limit
+              </p>
 
               <button
                 onClick={handleAdd}
@@ -233,6 +236,9 @@ function AlertRow({
               {alert.label}
             </span>
           )}
+        </div>
+        <div className="text-[9px] text-zinc-400 dark:text-white/25 mt-0.5">
+          Notify when {alert.threshold}% used
         </div>
       </div>
 

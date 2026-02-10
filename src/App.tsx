@@ -54,7 +54,8 @@ function AppContent() {
       const notif = await store.get<boolean>('notificationsEnabled');
       if (saved) setUsageAlerts(saved);
       if (notif !== null && notif !== undefined) setNotificationsEnabled(notif);
-    } catch {
+    } catch (e) {
+      console.error('Failed to load alerts:', e);
     }
   };
 
@@ -63,7 +64,8 @@ function AppContent() {
       const store = await Store.load('settings.json');
       await store.set('usageAlerts', alerts);
       await store.save();
-    } catch {
+    } catch (e) {
+      console.error('Failed to save alerts:', e);
     }
   };
 
@@ -72,7 +74,8 @@ function AppContent() {
       const store = await Store.load('settings.json');
       await store.set('notificationsEnabled', enabled);
       await store.save();
-    } catch {
+    } catch (e) {
+      console.error('Failed to save notification setting:', e);
     }
   };
 
@@ -92,18 +95,19 @@ function AppContent() {
       return;
     }
 
-    let count = 0;
-    const updated = usageAlerts.map(alert => {
-      if (!alert.enabled) return { ...alert, triggered: false };
-      const currentUtil = alert.type === 'period' ? periodUtil : weeklyUtil;
-      const isTriggered = currentUtil >= alert.threshold;
-      if (isTriggered) count++;
-      return { ...alert, triggered: isTriggered };
+    setUsageAlerts(prev => {
+      let count = 0;
+      const updated = prev.map(alert => {
+        if (!alert.enabled) return { ...alert, triggered: false };
+        const currentUtil = alert.type === 'period' ? periodUtil : weeklyUtil;
+        const isTriggered = currentUtil >= alert.threshold;
+        if (isTriggered) count++;
+        return { ...alert, triggered: isTriggered };
+      });
+      setTriggeredCount(count);
+      return updated;
     });
-
-    setUsageAlerts(updated);
-    setTriggeredCount(count);
-  }, [usageAlerts, notificationsEnabled]);
+  }, [notificationsEnabled]);
 
   const loadEnabledProviders = async () => {
     try {
@@ -352,13 +356,42 @@ function AppContent() {
         
         <GlassCard className="p-4">
           <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-black text-[var(--text-primary)] tracking-tight">
-                Agent Mana
-              </h1>
-              <p className="text-[10px] font-semibold text-[var(--text-muted)] tracking-widest uppercase">
-                Party Status
-              </p>
+            <div className="flex items-center gap-3">
+              <svg width="28" height="28" viewBox="0 0 16 16" shapeRendering="crispEdges" className="flex-shrink-0">
+                {/* Cork / stopper */}
+                <rect x="6" y="1" width="4" height="1" className="fill-amber-700 dark:fill-amber-600" />
+                <rect x="6" y="2" width="4" height="1" className="fill-amber-800 dark:fill-amber-500" />
+                {/* Bottle neck */}
+                <rect x="7" y="3" width="2" height="2" className="fill-zinc-300 dark:fill-zinc-500" />
+                {/* Bottle body */}
+                <rect x="5" y="5" width="6" height="1" className="fill-zinc-300 dark:fill-zinc-500" />
+                <rect x="4" y="6" width="8" height="6" className="fill-blue-400/30 dark:fill-blue-400/20" strokeWidth="0" />
+                {/* Bottle outline */}
+                <rect x="4" y="6" width="1" height="6" className="fill-zinc-400 dark:fill-zinc-500" />
+                <rect x="11" y="6" width="1" height="6" className="fill-zinc-400 dark:fill-zinc-500" />
+                <rect x="4" y="12" width="8" height="1" className="fill-zinc-400 dark:fill-zinc-500" />
+                {/* Mana liquid */}
+                <rect x="5" y="8" width="6" height="4" className="fill-blue-500 dark:fill-blue-400" />
+                <rect x="5" y="7" width="6" height="1" className="fill-blue-400 dark:fill-blue-300" opacity="0.6" />
+                {/* Liquid shine */}
+                <rect x="6" y="9" width="1" height="2" className="fill-blue-300 dark:fill-blue-200" opacity="0.7" />
+                <rect x="6" y="8" width="1" height="1" className="fill-white" opacity="0.4" />
+                {/* Sparkle */}
+                <rect x="9" y="3" width="1" height="1" className="fill-blue-300 dark:fill-blue-400" opacity="0.8" />
+                <rect x="10" y="2" width="1" height="1" className="fill-blue-200 dark:fill-blue-300" opacity="0.5" />
+              </svg>
+              <div>
+                <h1 className="text-xl font-black tracking-tight leading-none">
+                  <span className="bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500 dark:from-blue-400 dark:via-indigo-400 dark:to-purple-400 bg-clip-text text-transparent">
+                    Agent
+                  </span>
+                  <span className="text-[var(--text-primary)]">{' '}Mana</span>
+                </h1>
+                <p className="text-[9px] font-bold text-[var(--text-muted)] tracking-[0.2em] uppercase mt-0.5 flex items-center gap-1.5">
+                  <span className="inline-block w-1.5 h-1.5 bg-emerald-500 dark:bg-emerald-400 rounded-sm animate-pulse" />
+                  Party Status
+                </p>
+              </div>
             </div>
             <div className="flex gap-1.5">
               <button
