@@ -1,15 +1,21 @@
 import { useState, useEffect } from 'react';
-import { Xmark, Key, Eye, EyeClosed, FloppyDisk, Link as LinkIcon, Timer, Bell, HalfMoon, Plus, Search, Minus } from 'iconoir-react';
+import { Xmark, Key, Eye, EyeClosed, FloppyDisk, Link as LinkIcon, Timer, HalfMoon, Plus, Search, Minus } from 'iconoir-react';
 import { invoke } from '@tauri-apps/api/core';
 import { Store } from '@tauri-apps/plugin-store';
 import GlassCard from './GlassCard';
-import PixelCharacter from './PixelCharacter';
 import SadPixelCharacter from './SadPixelCharacter';
+import ProviderLogo from './ProviderLogo';
+import UsageAlerts from './UsageAlerts';
 import { useTheme } from '../contexts/ThemeContext';
 import { ProviderConfig, ProviderId, AVAILABLE_PROVIDERS } from '../types/providers';
+import { UsageAlert } from '../types/api';
 
 interface SettingsPanelProps {
   providers: ProviderConfig[];
+  alerts: UsageAlert[];
+  notificationsEnabled: boolean;
+  onAlertsChange: (alerts: UsageAlert[]) => void;
+  onToggleNotifications: (enabled: boolean) => void;
   onSaveKey: (provider: string, apiKey: string) => Promise<void>;
   onRemoveKey: (provider: ProviderId) => void;
   onAddProvider: (provider: ProviderId) => void;
@@ -17,7 +23,7 @@ interface SettingsPanelProps {
   onClose: () => void;
 }
 
-export default function SettingsPanel({ providers, onSaveKey, onRemoveKey, onAddProvider, onOAuthConnect, onClose }: SettingsPanelProps) {
+export default function SettingsPanel({ providers, alerts, notificationsEnabled, onAlertsChange, onToggleNotifications, onSaveKey, onRemoveKey, onAddProvider, onOAuthConnect, onClose }: SettingsPanelProps) {
   const { preference, setPreference } = useTheme();
   const [editingProvider, setEditingProvider] = useState<string | null>(null);
   const [apiKeyInput, setApiKeyInput] = useState('');
@@ -30,9 +36,6 @@ export default function SettingsPanel({ providers, onSaveKey, onRemoveKey, onAdd
   const [searchQuery, setSearchQuery] = useState('');
 
   const [pollingInterval, setPollingInterval] = useState(60);
-  const [periodThreshold, setPeriodThreshold] = useState(80);
-  const [weeklyThreshold, setWeeklyThreshold] = useState(90);
-  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
 
   const enabledProviderIds = providers.map(p => p.provider);
   const availableProviders = Object.values(AVAILABLE_PROVIDERS).filter(
@@ -45,44 +48,30 @@ export default function SettingsPanel({ providers, onSaveKey, onRemoveKey, onAdd
   );
 
   useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
+  useEffect(() => {
     const loadSettings = async () => {
       try {
         const store = await Store.load('settings.json');
         const interval = await store.get<number>('pollingInterval');
-        const period = await store.get<number>('periodThreshold');
-        const weekly = await store.get<number>('weeklyThreshold');
-        const notifications = await store.get<boolean>('notificationsEnabled');
-
         if (interval) setPollingInterval(interval);
-        if (period) setPeriodThreshold(period);
-        if (weekly) setWeeklyThreshold(weekly);
-        if (notifications !== null) setNotificationsEnabled(notifications ?? true);
       } catch {
       }
     };
     loadSettings();
   }, []);
 
-  const saveSettings = async () => {
+  const savePollingInterval = async (value: number) => {
     try {
       const store = await Store.load('settings.json');
-      await store.set('pollingInterval', pollingInterval);
-      await store.set('periodThreshold', periodThreshold);
-      await store.set('weeklyThreshold', weeklyThreshold);
-      await store.set('notificationsEnabled', notificationsEnabled);
+      await store.set('pollingInterval', value);
       await store.save();
-
-      await invoke('save_threshold', {
-        threshold: {
-          provider: 'anthropic',
-          token_limit: null,
-          cost_limit: null,
-          rate_limit_percentage: null,
-          period_utilization_threshold: notificationsEnabled ? periodThreshold : null,
-          weekly_utilization_threshold: notificationsEnabled ? weeklyThreshold : null,
-          enabled: notificationsEnabled,
-        }
-      });
     } catch {
     }
   };
@@ -172,26 +161,39 @@ export default function SettingsPanel({ providers, onSaveKey, onRemoveKey, onAdd
                 
                 {filteredProviders.length > 0 ? (
                   <div className="space-y-2 max-h-64 overflow-y-auto">
-                    {filteredProviders.map((def) => (
-                      <button
-                        key={def.id}
-                        onClick={() => {
-                          onAddProvider(def.id);
-                          setShowAddProvider(false);
-                          setSearchQuery('');
-                        }}
-                        className="w-full flex items-center gap-3 p-3 bg-zinc-100 dark:bg-white/[0.03] hover:bg-zinc-200 dark:hover:bg-white/[0.08] rounded-lg transition-all text-left"
-                      >
-                        <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: def.color + '20' }}>
-                          <div className="w-4 h-4 rounded" style={{ backgroundColor: def.color }} />
-                        </div>
-                        <div className="flex-1">
-                          <div className="text-sm font-semibold text-zinc-900 dark:text-white">{def.name}</div>
-                          <div className="text-[10px] text-zinc-500 dark:text-white/50">{def.description}</div>
-                        </div>
-                        <Plus className="w-4 h-4 text-zinc-400 dark:text-white/40" />
-                      </button>
-                    ))}
+                    {filteredProviders.map((def) => {
+                      const isSupported = def.id === 'anthropic';
+                      return (
+                        <button
+                          key={def.id}
+                          onClick={() => {
+                            if (!isSupported) return;
+                            onAddProvider(def.id);
+                            setShowAddProvider(false);
+                            setSearchQuery('');
+                          }}
+                          disabled={!isSupported}
+                          className={`w-full flex items-center gap-3 p-3 rounded-lg transition-all text-left ${
+                            isSupported
+                              ? 'bg-zinc-100 dark:bg-white/[0.03] hover:bg-zinc-200 dark:hover:bg-white/[0.08] cursor-pointer'
+                              : 'bg-zinc-50 dark:bg-white/[0.01] opacity-50 cursor-not-allowed grayscale'
+                          }`}
+                        >
+                          <ProviderLogo provider={def.id} size={20} className="w-8 h-8 rounded-lg" />
+                          <div className="flex-1">
+                            <div className="text-sm font-semibold text-zinc-900 dark:text-white">{def.name}</div>
+                            <div className="text-[10px] text-zinc-500 dark:text-white/50">{def.description}</div>
+                          </div>
+                          {isSupported ? (
+                            <Plus className="w-4 h-4 text-zinc-400 dark:text-white/40" />
+                          ) : (
+                            <span className="px-2 py-0.5 rounded-full bg-zinc-200 dark:bg-white/[0.08] text-[9px] font-semibold text-zinc-400 dark:text-white/30 whitespace-nowrap">
+                              Coming Soon
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
                   </div>
                 ) : (
                   <div className="text-center py-6 text-xs text-zinc-400 dark:text-white/40">
@@ -226,7 +228,7 @@ export default function SettingsPanel({ providers, onSaveKey, onRemoveKey, onAdd
               </button>
               
               <div className="flex items-center gap-3 mb-3 pr-8">
-                <PixelCharacter provider={provider.provider} size={32} isActive={provider.connected} />
+                <ProviderLogo provider={provider.provider} size={24} className="w-8 h-8 rounded-lg bg-zinc-100 dark:bg-white/[0.05]" />
                 <div className="flex-1">
                   <div className="text-sm font-semibold text-zinc-900 dark:text-white">{provider.name}</div>
                   <div className={`text-[10px] ${provider.connected ? 'text-green-500' : 'text-zinc-400 dark:text-white/40'}`}>
@@ -338,63 +340,12 @@ export default function SettingsPanel({ providers, onSaveKey, onRemoveKey, onAdd
                   )}
 
                   {provider.connected && provider.provider === 'anthropic' && (
-                    <div className="border-t border-zinc-200 dark:border-white/[0.05] pt-3 mt-3">
-                      <div className="flex items-center gap-2 mb-3">
-                        <Bell className="w-3.5 h-3.5 text-zinc-400 dark:text-white/40" />
-                        <span className="text-xs font-medium text-zinc-700 dark:text-white/70">Usage Alerts</span>
-                        <div className="flex-1" />
-                        <button
-                          onClick={() => {
-                            setNotificationsEnabled(!notificationsEnabled);
-                            setTimeout(saveSettings, 0);
-                          }}
-                          className={`w-9 h-5 rounded-full transition-colors ${notificationsEnabled ? 'bg-green-500' : 'bg-zinc-300 dark:bg-white/20'
-                            }`}
-                        >
-                          <div className={`w-4 h-4 rounded-full bg-white transition-transform mx-0.5 ${notificationsEnabled ? 'translate-x-4' : 'translate-x-0'
-                            }`} />
-                        </button>
-                      </div>
-
-                      {notificationsEnabled && (
-                        <div className="space-y-2.5">
-                          <div className="flex items-center justify-between">
-                            <span className="text-[11px] text-zinc-500 dark:text-white/50">5-hour limit</span>
-                            <div className="flex items-center gap-2">
-                              <input
-                                type="range"
-                                min="50"
-                                max="100"
-                                value={periodThreshold}
-                                onChange={(e) => {
-                                  setPeriodThreshold(Number(e.target.value));
-                                  saveSettings();
-                                }}
-                                className="w-16 h-1 bg-zinc-300 dark:bg-white/20 rounded-full appearance-none [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-blue-500"
-                              />
-                              <span className="text-[11px] text-zinc-700 dark:text-white/80 w-7">{periodThreshold}%</span>
-                            </div>
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <span className="text-[11px] text-zinc-500 dark:text-white/50">Weekly limit</span>
-                            <div className="flex items-center gap-2">
-                              <input
-                                type="range"
-                                min="50"
-                                max="100"
-                                value={weeklyThreshold}
-                                onChange={(e) => {
-                                  setWeeklyThreshold(Number(e.target.value));
-                                  saveSettings();
-                                }}
-                                className="w-16 h-1 bg-zinc-300 dark:bg-white/20 rounded-full appearance-none [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-green-500"
-                              />
-                              <span className="text-[11px] text-zinc-700 dark:text-white/80 w-7">{weeklyThreshold}%</span>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
+                    <UsageAlerts
+                      alerts={alerts}
+                      onAlertsChange={onAlertsChange}
+                      notificationsEnabled={notificationsEnabled}
+                      onToggleNotifications={onToggleNotifications}
+                    />
                   )}
                 </div>
               ) : provider.provider === 'openai' ? (
@@ -468,8 +419,9 @@ export default function SettingsPanel({ providers, onSaveKey, onRemoveKey, onAdd
               <select
                 value={pollingInterval}
                 onChange={(e) => {
-                  setPollingInterval(Number(e.target.value));
-                  saveSettings();
+                  const val = Number(e.target.value);
+                  setPollingInterval(val);
+                  savePollingInterval(val);
                 }}
                 className={selectClass}
               >

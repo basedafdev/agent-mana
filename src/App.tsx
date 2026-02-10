@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { RefreshDouble, Settings } from 'iconoir-react';
 import { invoke } from '@tauri-apps/api/core';
 import { Store } from '@tauri-apps/plugin-store';
@@ -8,6 +8,7 @@ import SettingsPanel from './components/SettingsPanel';
 import DowntimeAnalysis from './components/DowntimeAnalysis';
 import GlassCard from './components/GlassCard';
 import { ProviderConfig, ProviderId, AVAILABLE_PROVIDERS } from './types/providers';
+import { UsageAlert } from './types/api';
 
 interface ClaudeUsageSnapshot {
   period_utilization: number;
@@ -42,13 +43,67 @@ function AppContent() {
 
   const [characterStats, setCharacterStats] = useState<CharacterStats[]>([]);
 
-  const [hourlyUsage] = useState(() => {
-    return Array.from({ length: 24 }, (_, i) => ({
-      hour: i,
-      requests: Math.floor(Math.random() * 100),
-      tokens: Math.floor(Math.random() * 10000),
-    }));
-  });
+  const [usageAlerts, setUsageAlerts] = useState<UsageAlert[]>([]);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  const [triggeredCount, setTriggeredCount] = useState(0);
+
+  const loadAlerts = async () => {
+    try {
+      const store = await Store.load('settings.json');
+      const saved = await store.get<UsageAlert[]>('usageAlerts');
+      const notif = await store.get<boolean>('notificationsEnabled');
+      if (saved) setUsageAlerts(saved);
+      if (notif !== null && notif !== undefined) setNotificationsEnabled(notif);
+    } catch {
+    }
+  };
+
+  const saveAlerts = async (alerts: UsageAlert[]) => {
+    try {
+      const store = await Store.load('settings.json');
+      await store.set('usageAlerts', alerts);
+      await store.save();
+    } catch {
+    }
+  };
+
+  const saveNotificationsEnabled = async (enabled: boolean) => {
+    try {
+      const store = await Store.load('settings.json');
+      await store.set('notificationsEnabled', enabled);
+      await store.save();
+    } catch {
+    }
+  };
+
+  const handleAlertsChange = useCallback((alerts: UsageAlert[]) => {
+    setUsageAlerts(alerts);
+    saveAlerts(alerts);
+  }, []);
+
+  const handleToggleNotifications = useCallback((enabled: boolean) => {
+    setNotificationsEnabled(enabled);
+    saveNotificationsEnabled(enabled);
+  }, []);
+
+  const checkAlerts = useCallback((periodUtil: number, weeklyUtil: number) => {
+    if (!notificationsEnabled) {
+      setTriggeredCount(0);
+      return;
+    }
+
+    let count = 0;
+    const updated = usageAlerts.map(alert => {
+      if (!alert.enabled) return { ...alert, triggered: false };
+      const currentUtil = alert.type === 'period' ? periodUtil : weeklyUtil;
+      const isTriggered = currentUtil >= alert.threshold;
+      if (isTriggered) count++;
+      return { ...alert, triggered: isTriggered };
+    });
+
+    setUsageAlerts(updated);
+    setTriggeredCount(count);
+  }, [usageAlerts, notificationsEnabled]);
 
   const loadEnabledProviders = async () => {
     try {
@@ -232,6 +287,8 @@ function AppContent() {
         } catch (e) {
           console.warn('Failed to update tray:', e);
         }
+
+        checkAlerts(usage.period_utilization, usage.weekly_utilization ?? 0);
       }
       
       setLastRefreshTime(new Date());
@@ -274,6 +331,7 @@ function AppContent() {
 
   useEffect(() => {
     loadEnabledProviders();
+    loadAlerts();
   }, []);
 
   useEffect(() => {
@@ -312,9 +370,14 @@ function AppContent() {
               </button>
               <button
                 onClick={() => setShowSettings(true)}
-                className="p-2 bg-[var(--bg-input)] border border-[var(--border-primary)] hover:bg-[var(--bg-card-hover)] rounded-lg transition-all text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                className="relative p-2 bg-[var(--bg-input)] border border-[var(--border-primary)] hover:bg-[var(--bg-card-hover)] rounded-lg transition-all text-[var(--text-muted)] hover:text-[var(--text-primary)]"
               >
                 <Settings className="w-4 h-4" />
+                {triggeredCount > 0 && (
+                  <span className="absolute -top-1 -right-1 min-w-[16px] h-4 flex items-center justify-center px-1 bg-red-500 text-white text-[9px] font-bold rounded-full animate-pulse">
+                    {triggeredCount}
+                  </span>
+                )}
               </button>
             </div>
           </div>
@@ -355,7 +418,7 @@ function AppContent() {
         )}
 
         {connectedCharacters.length > 0 && (
-          <DowntimeAnalysis data={hourlyUsage} provider="anthropic" />
+          <DowntimeAnalysis />
         )}
 
         <div className="text-center text-[10px] font-mono text-[var(--text-muted)] pt-2">
@@ -368,6 +431,10 @@ function AppContent() {
       {showSettings && (
         <SettingsPanel
           providers={providerConfigs}
+          alerts={usageAlerts}
+          notificationsEnabled={notificationsEnabled}
+          onAlertsChange={handleAlertsChange}
+          onToggleNotifications={handleToggleNotifications}
           onSaveKey={handleSaveKey}
           onRemoveKey={handleRemoveProvider}
           onAddProvider={handleAddProvider}

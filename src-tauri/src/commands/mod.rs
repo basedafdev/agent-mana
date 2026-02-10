@@ -298,12 +298,16 @@ pub async fn update_tray_menu(
         .map(|dt| {
             let now = chrono::Utc::now();
             let diff = dt.signed_duration_since(now);
-            let days = diff.num_days();
-            let hours = diff.num_hours() % 24;
-            if days > 0 {
-                format!("Resets in {}d {}h", days, hours)
+            if diff.num_seconds() <= 0 {
+                "Resetting...".to_string()
             } else {
-                format!("Resets in {}h", hours)
+                let days = diff.num_days();
+                let hours = diff.num_hours() % 24;
+                if days > 0 {
+                    format!("Resets in {}d {}h", days, hours)
+                } else {
+                    format!("Resets in {}h", hours)
+                }
             }
         })
         .unwrap_or_default();
@@ -313,12 +317,16 @@ pub async fn update_tray_menu(
         .map(|dt| {
             let now = chrono::Utc::now();
             let diff = dt.signed_duration_since(now);
-            let hours = diff.num_hours();
-            let mins = diff.num_minutes() % 60;
-            if hours > 0 {
-                format!("Resets in {}h {}m", hours, mins)
+            if diff.num_seconds() <= 0 {
+                "Resetting...".to_string()
             } else {
-                format!("Resets in {}m", mins)
+                let hours = diff.num_hours();
+                let mins = diff.num_minutes() % 60;
+                if hours > 0 {
+                    format!("Resets in {}h {}m", hours, mins)
+                } else {
+                    format!("Resets in {}m", mins)
+                }
             }
         })
         .unwrap_or_default();
@@ -335,6 +343,8 @@ pub async fn update_tray_menu(
         .map_err(|e| e.to_string())?;
     let separator = PredefinedMenuItem::separator(&app)
         .map_err(|e| e.to_string())?;
+    let show_item = MenuItem::with_id(&app, "show", "Show Window", true, None::<&str>)
+        .map_err(|e| e.to_string())?;
     let quit_item = MenuItem::with_id(&app, "quit", "Quit Agent Mana", true, None::<&str>)
         .map_err(|e| e.to_string())?;
     
@@ -345,6 +355,7 @@ pub async fn update_tray_menu(
         &period_item,
         &period_reset_item,
         &separator,
+        &show_item,
         &quit_item,
     ]).map_err(|e| e.to_string())?;
     

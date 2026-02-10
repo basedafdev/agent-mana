@@ -53,3 +53,12 @@ export interface ApiKeyConfig {
   api_key: string;
   name?: string;
 }
+
+export interface UsageAlert {
+  id: string;
+  type: 'period' | 'weekly';
+  threshold: number;
+  enabled: boolean;
+  label?: string;
+  triggered?: boolean;
+}
