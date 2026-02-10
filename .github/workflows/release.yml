@@ -2,14 +2,53 @@ name: Release
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches:
+      - main
 
 permissions:
   contents: write
 
 jobs:
+  version-bump:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.bump.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Bump version and tag
+        id: bump
+        run: |
+          CURRENT=$(grep '"version"' package.json | head -1 | sed -E 's/.*"([0-9]+\.[0-9]+\.[0-9]+)".*/\1/')
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
+
+          COMMIT_MSG=$(git log -1 --pretty=%B)
+          if echo "$COMMIT_MSG" | grep -qi '\[major\]'; then
+            MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0
+          elif echo "$COMMIT_MSG" | grep -qi '\[minor\]'; then
+            MINOR=$((MINOR + 1)); PATCH=0
+          else
+            PATCH=$((PATCH + 1))
+          fi
+
+          NEW="${MAJOR}.${MINOR}.${PATCH}"
+          TAG="v${NEW}"
+
+          sed -i "s/\"version\": \"${CURRENT}\"/\"version\": \"${NEW}\"/" package.json
+          sed -i "s/\"version\": \"${CURRENT}\"/\"version\": \"${NEW}\"/" src-tauri/tauri.conf.json
+          sed -i "s/^version = \"${CURRENT}\"/version = \"${NEW}\"/" src-tauri/Cargo.toml
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml
+          git commit -m "release: ${TAG}"
+          git tag "$TAG"
+          git push origin main --tags
+
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
   publish:
+    needs: version-bump
     strategy:
       fail-fast: false
       matrix:
@@ -25,6 +64,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.version-bump.outputs.tag }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -55,8 +96,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: 'Agent Mana ${{ github.ref_name }}'
+          tagName: ${{ needs.version-bump.outputs.tag }}
+          releaseName: 'Agent Mana ${{ needs.version-bump.outputs.tag }}'
           releaseBody: 'See the assets to download and install this version.'
           releaseDraft: false
           prerelease: false
