@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - main
+    paths-ignore:
+      - '.github/**'
 
 permissions:
   contents: write
@@ -11,10 +13,16 @@ permissions:
 jobs:
   version-bump:
     runs-on: ubuntu-latest
+    # Skip if commit message contains [skip ci] or starts with "release:"
+    if: "!contains(github.event.head_commit.message, '[skip ci]') && !startsWith(github.event.head_commit.message, 'release:')"
     outputs:
       tag: ${{ steps.bump.outputs.tag }}
+      should_release: ${{ steps.bump.outputs.should_release }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Bump version and tag
         id: bump
@@ -34,21 +42,30 @@ jobs:
           NEW="${MAJOR}.${MINOR}.${PATCH}"
           TAG="v${NEW}"
 
+          # Check if tag already exists
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG already exists, skipping release"
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
           sed -i "s/\"version\": \"${CURRENT}\"/\"version\": \"${NEW}\"/" package.json
           sed -i "s/\"version\": \"${CURRENT}\"/\"version\": \"${NEW}\"/" src-tauri/tauri.conf.json
           sed -i "s/^version = \"${CURRENT}\"/version = \"${NEW}\"/" src-tauri/Cargo.toml
 
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml
-          git commit -m "release: ${TAG}"
+          git add package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock
+          git commit -m "release: ${TAG} [skip ci]"
           git tag "$TAG"
           git push origin main --tags
 
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "should_release=true" >> "$GITHUB_OUTPUT"
 
   publish:
     needs: version-bump
+    if: needs.version-bump.outputs.should_release == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -90,9 +107,9 @@ jobs:
           sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev patchelf
 
       - name: Install frontend dependencies
-        run: npm install
+        run: npm ci
 
-      - uses: tauri-apps/tauri-action@v1
+      - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
