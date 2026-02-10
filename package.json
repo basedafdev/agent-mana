@@ -1,7 +1,7 @@
 {
   "name": "agent-mana",
   "private": true,
-  "version": "0.1.2",
+  "version": "0.1.3",
   "type": "module",
   "description": "AI usage monitoring desktop app - track Anthropic and OpenAI API usage",
   "scripts": {
