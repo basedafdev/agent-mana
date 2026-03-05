@@ -57,26 +57,26 @@ sudo pacman -S webkit2gtk-4.1 gtk3 libappindicator-gtk3 librsvg
 
 ### Quick Install (Recommended)
 ```bash
-curl -fsSL https://raw.githubusercontent.com/basedafdev/agent-mana/main/install/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/tommyldev/agent-mana/main/install/install.sh | sh
 ```
 
 ### Package Managers
 
 #### macOS (Homebrew)
 ```bash
-brew tap basedafdev/agent-mana
+brew tap tommyldev/agent-mana
 brew install agent-mana
 ```
 
 #### Linux (Debian/Ubuntu)
 ```bash
-wget https://github.com/basedafdev/agent-mana/releases/latest/download/agent-mana_amd64.deb
+wget https://github.com/tommyldev/agent-mana/releases/latest/download/agent-mana_amd64.deb
 sudo dpkg -i agent-mana_amd64.deb
 ```
 
 #### From Source
 ```bash
-git clone https://github.com/basedafdev/agent-mana.git
+git clone https://github.com/tommyldev/agent-mana.git
 cd agent-mana
 npm install
 npm run build
@@ -87,7 +87,7 @@ npm run tauri build
 
 ### 1. Clone the Repository
 ```bash
-git clone https://github.com/basedafdev/agent-mana.git
+git clone https://github.com/tommyldev/agent-mana.git
 cd agent-mana
 ```
 
