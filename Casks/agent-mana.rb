@@ -10,4 +10,9 @@ cask "agent-mana" do
   homepage "https://github.com/tommyldev/agent-mana"
 
   app "Agent Mana.app"
+
+  postflight do
+    system_command "/usr/bin/xattr",
+      args: ["-dr", "com.apple.quarantine", "#{appdir}/Agent Mana.app"]
+  end
 end
