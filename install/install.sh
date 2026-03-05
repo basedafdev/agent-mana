@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO="basedafdev/agent-mana"
+REPO="tommyldev/agent-mana"
 INSTALL_DIR="${HOME}/.local/bin"
 BINARY_NAME="agent-mana"
 

@@ -64,8 +64,8 @@ curl -fsSL https://raw.githubusercontent.com/tommyldev/agent-mana/main/install/i
 
 #### macOS (Homebrew)
 ```bash
-brew tap tommyldev/agent-mana
-brew install agent-mana
+brew tap tommyldev/agent-mana https://github.com/tommyldev/agent-mana
+brew install --cask tommyldev/agent-mana/agent-mana
 ```
 
 #### Linux (Debian/Ubuntu)
