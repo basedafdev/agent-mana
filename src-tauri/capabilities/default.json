@@ -7,6 +7,9 @@
     "core:default",
     "opener:default",
     "notification:default",
+    "notification:allow-notify",
+    "notification:allow-is-permission-granted",
+    "notification:allow-request-permission",
     "sql:default",
     "store:default",
     "shell:default"

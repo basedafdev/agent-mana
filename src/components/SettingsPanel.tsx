@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Xmark, Key, Eye, EyeClosed, FloppyDisk, Link as LinkIcon, Timer, HalfMoon, Plus, Search, Minus } from 'iconoir-react';
+import { Xmark, Key, Eye, EyeClosed, FloppyDisk, Link as LinkIcon, Timer, HalfMoon, Plus, Search, Minus, Bell } from 'iconoir-react';
 import { invoke } from '@tauri-apps/api/core';
 import { Store } from '@tauri-apps/plugin-store';
 import GlassCard from './GlassCard';
@@ -24,6 +24,7 @@ interface SettingsPanelProps {
 }
 
 export default function SettingsPanel({ providers, alerts, notificationsEnabled, onAlertsChange, onToggleNotifications, onSaveKey, onRemoveKey, onAddProvider, onOAuthConnect, onClose }: SettingsPanelProps) {
+  const isDev = import.meta.env.DEV;
   const { preference, setPreference } = useTheme();
   const [editingProvider, setEditingProvider] = useState<string | null>(null);
   const [apiKeyInput, setApiKeyInput] = useState('');
@@ -36,6 +37,8 @@ export default function SettingsPanel({ providers, alerts, notificationsEnabled,
   const [searchQuery, setSearchQuery] = useState('');
 
   const [pollingInterval, setPollingInterval] = useState(60);
+  const [testNotifState, setTestNotifState] = useState<'idle' | 'sent' | 'error'>('idle');
+  const [testNotifError, setTestNotifError] = useState<string | null>(null);
 
   const enabledProviderIds = providers.map(p => p.provider);
   const availableProviders = Object.values(AVAILABLE_PROVIDERS).filter(
@@ -431,6 +434,46 @@ export default function SettingsPanel({ providers, alerts, notificationsEnabled,
                 <option value={300}>5 min</option>
               </select>
             </div>
+
+            {isDev && (
+              <div className="border-t border-zinc-200 dark:border-white/[0.05] pt-4 flex items-center gap-3">
+                <Bell className="w-4 h-4 text-zinc-400 dark:text-white/40" />
+                <div className="flex-1">
+                  <div className="text-sm font-medium text-zinc-900 dark:text-white">Test Notification</div>
+                  <div className="text-[10px] text-zinc-500 dark:text-white/40">
+                    {testNotifError
+                      ? testNotifError
+                      : 'Send a test desktop notification'}
+                  </div>
+                </div>
+                <button
+                  onClick={async () => {
+                    setTestNotifError(null);
+                    try {
+                      await invoke('send_test_notification');
+                      setTestNotifState('sent');
+                      setTimeout(() => setTestNotifState('idle'), 2000);
+                    } catch (err) {
+                      console.error('Test notification failed:', err);
+                      const msg = err instanceof Error ? err.message : String(err);
+                      setTestNotifError(msg);
+                      setTestNotifState('error');
+                      setTimeout(() => { setTestNotifState('idle'); setTestNotifError(null); }, 5000);
+                    }
+                  }}
+                  disabled={testNotifState !== 'idle'}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                    testNotifState === 'sent'
+                      ? 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 border border-green-300 dark:border-green-800'
+                      : testNotifState === 'error'
+                      ? 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 border border-red-300 dark:border-red-800'
+                      : 'bg-zinc-100 dark:bg-white/[0.05] border border-zinc-300 dark:border-white/[0.08] text-zinc-600 dark:text-white/60 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-200 dark:hover:bg-white/[0.1]'
+                  }`}
+                >
+                  {testNotifState === 'sent' ? 'Sent!' : testNotifState === 'error' ? 'Failed' : 'Send'}
+                </button>
+              </div>
+            )}
           </GlassCard>
         </div>
 

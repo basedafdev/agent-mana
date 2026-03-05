@@ -1,4 +1,5 @@
 use crate::services::{ProviderStatus, NotificationService, NotificationThreshold, ClaudeUsageSnapshot};
+use crate::services::notification::show_app_notification;
 use crate::storage::keychain::KeychainManager;
 use crate::auth::oauth::OAuthManager;
 use crate::api::claude_oauth::ClaudeOAuthClient;
@@ -274,6 +275,18 @@ pub async fn update_tray_icon(
         tray.set_icon(Some(icon)).map_err(|e| e.to_string())?;
     }
     
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn send_test_notification(app: tauri::AppHandle) -> Result<(), String> {
+    let timestamp = chrono::Local::now().format("%H:%M:%S").to_string();
+    show_app_notification(
+        &app,
+        "Agent Mana - Test",
+        format!("Notifications are working ({})", timestamp),
+    )?;
+
     Ok(())
 }
 

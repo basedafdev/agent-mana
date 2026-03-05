@@ -3,6 +3,23 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use tauri_plugin_notification::NotificationExt;
 
+pub fn show_app_notification(
+    app: &tauri::AppHandle,
+    title: impl Into<String>,
+    body: impl Into<String>,
+) -> Result<(), String> {
+    let title = title.into();
+    let body = body.into();
+
+    app.notification()
+        .builder()
+        .title(title)
+        .body(body)
+        .sound("default")
+        .show()
+        .map_err(|e| e.to_string())
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 pub struct NotificationThreshold {
     pub provider: String,
@@ -167,6 +184,8 @@ impl NotificationService {
     }
 
     fn send_notification(&self, app: &tauri::AppHandle, title: &str, body: &str) {
-        let _ = app.notification().builder().title(title).body(body).show();
+        if let Err(err) = show_app_notification(app, title, body) {
+            eprintln!("Failed to send notification '{}': {}", title, err);
+        }
     }
 }

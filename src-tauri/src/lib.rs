@@ -79,6 +79,7 @@ pub fn run() {
             commands::check_oauth_credentials,
             commands::update_tray_icon,
             commands::update_tray_menu,
+            commands::send_test_notification,
         ])
         .setup(move |app| {
             let icon_data = tray::generate_disconnected_icon();
